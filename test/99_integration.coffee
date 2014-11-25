@@ -95,10 +95,7 @@ describe "Integration", ->
 				, 200
 
 		afterEach (done) ->
-			@timeout 10000
-			setTimeout ->
-				printServices done
-			, 1000
+			printServices done
 
 		it "let's go! (initial timeout)", (done) ->
 			setTimeout done, 1000
@@ -197,9 +194,3 @@ describe "Integration", ->
 			setTimeout ->
 				done()
 			, 500
-
-		it "wait for it", (done) ->
-			@timeout 100000
-			setTimeout ->
-				done()
-			, 20000

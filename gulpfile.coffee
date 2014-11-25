@@ -5,7 +5,7 @@
 	livereload:    enabled: false
 	nodemon:       enabled: false
 	forever:       enabled: false
-	documentation: enabled: true
+	documentation: enabled: false
 	clean:         enabled: true
 	watch:         enabled: true
 	tests:         enabled: true
