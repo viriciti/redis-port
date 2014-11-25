@@ -3,7 +3,6 @@ async            = require "async"
 { EventEmitter } = require "events"
 path             = require "path"
 redis            = require "redis"
-winston          = require "winston"
 _                = require "underscore"
 
 log = require "./log"
