@@ -73,7 +73,7 @@ class RedisPort extends EventEmitter
 	# @param [Function] Callback function
 	#
 	start: (cb) ->
-		log.info "redis-port: Connecting to #{@redisHost}:#{@redisPort}"
+		log.debug "redis-port: Connecting to #{@redisHost}:#{@redisPort}"
 
 		@subscriber = redis.createClient @redisPort, @redisHost, retry_max_delay: 10000
 
@@ -99,6 +99,7 @@ class RedisPort extends EventEmitter
 		@client = redis.createClient @redisPort, @redisHost, retry_max_delay: 10000
 
 		@client.once "connect", (error) =>
+			log.debug "redis-port: Connected."
 			@emit "started"
 			cb?()
 

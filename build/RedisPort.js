@@ -53,7 +53,7 @@ RedisPort = (function(_super) {
   }
 
   RedisPort.prototype.start = function(cb) {
-    log.info("redis-port: Connecting to " + this.redisHost + ":" + this.redisPort);
+    log.debug("redis-port: Connecting to " + this.redisHost + ":" + this.redisPort);
     this.subscriber = redis.createClient(this.redisPort, this.redisHost, {
       retry_max_delay: 10000
     });
@@ -90,6 +90,7 @@ RedisPort = (function(_super) {
     });
     this.client.once("connect", (function(_this) {
       return function(error) {
+        log.debug("redis-port: Connected.");
         _this.emit("started");
         return typeof cb === "function" ? cb() : void 0;
       };
