@@ -270,12 +270,19 @@ RedisPort = (function(_super) {
     var p, subscriptionKey;
     p = this._cleanPath("services/" + role);
     subscriptionKey = "__keyspace@0__:" + p;
-    log.debug("Subscribing to " + p);
     this.subscriber.psubscribe(subscriptionKey);
-    return this.subscriptions[subscriptionKey] = {
+    log.debug("Subscribing to " + p);
+    this.subscriptions[subscriptionKey] = {
       path: p,
       fn: fn
     };
+    return this.get(p, (function(_this) {
+      return function(error, service) {
+        if (!error && service) {
+          return fn(service);
+        }
+      };
+    })(this));
   };
 
   RedisPort.prototype.getServices = function(cb) {

@@ -262,10 +262,15 @@ class RedisPort extends EventEmitter
 	#
 	query: (role, fn) ->
 		p = @_cleanPath "services/#{role}"
+
 		subscriptionKey = "__keyspace@0__:#{p}"
-		log.debug "Subscribing to #{p}"
 		@subscriber.psubscribe subscriptionKey
+		log.debug "Subscribing to #{p}"
+
 		@subscriptions[subscriptionKey] = path: p, fn: fn
+
+		@get p, (error, service) =>
+			fn service if not error and service
 
 	# Get current known services
 	#
