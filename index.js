@@ -1,1 +1,1 @@
-module.exports = require("build/RedisPort");
+module.exports = require("./build/RedisPort");
