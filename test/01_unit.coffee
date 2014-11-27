@@ -176,6 +176,20 @@ describe "Unit", ->
 					throw error if error
 					done()
 
+		describe "delete", ->
+			it "should be deleted without an error an delete the timeout", (done) ->
+				setTimeout ->
+					client.del "some", (error) ->
+						throw error if error
+						client.get "some", (error, data) ->
+							throw error if error
+							assert.equal null, data
+							done()
+				, 400
+				client.get "some", (error, data) ->
+					throw error if error
+					assert data
+
 	describe "reconnect", ->
 		describe "all ephemeral is gone", ->
 			it "set some last ephemerals", (done) ->
@@ -186,7 +200,7 @@ describe "Unit", ->
 				], (error) ->
 					client.list "", (error, list) ->
 						throw error if error
-						async.each ["some", "someWhere", "someHere", "someThere"], ((el, cb) ->
+						async.each ["someWhere", "someHere", "someThere"], ((el, cb) ->
 							assert el in list
 							cb()
 						), (error) ->
@@ -283,7 +297,7 @@ describe "Unit", ->
 				@timeout 50000
 
 				client.query "GekkeGerrit", (data) ->
-					console.log data
+					assert data
 					done()
 
 				client.register "GekkeGerrit", (error, port) ->

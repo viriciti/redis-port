@@ -75,7 +75,7 @@ RedisPort = (function(_super) {
               return _this.emit("register", service);
             });
           case "expired":
-            return _this.emit("free", service);
+            return _this.emit("free", sub.role);
         }
       };
     })(this));
@@ -154,7 +154,7 @@ RedisPort = (function(_super) {
           return cb(error);
         }
         return async.eachSeries(keys, (function(k, cb) {
-          clearInterval(_this.ephemerals[k]);
+          clearTimeout(_this.ephemerals[k]);
           return _this.client.del(k, function(error, result) {
             log.debug("del", k, result);
             if (error) {
@@ -187,20 +187,21 @@ RedisPort = (function(_super) {
     p = this._cleanPath(p);
     return this.client.psetex(p, this.ephemeralExpire, JSON.stringify(data), (function(_this) {
       return function(error, result) {
+        var updateExpire;
         log.debug("setex", p, _this.ephemeralExpire);
         if (error) {
           return cb(error);
         }
-        clearInterval(_this.ephemerals[p]);
-        _this.ephemerals[p] = setInterval(function() {
+        updateExpire = function() {
           return _this.client.pexpire(p, _this.ephemeralExpire, function(error, result) {
             log.debug("expire", p, result, _this.ephemeralRefresh);
             if (error) {
-              log.error("Error setting expire on " + p + ": " + error.message);
-              return clearInterval(_this.ephemerals[p]);
+              return log.error("Error setting expire on " + p + ": " + error.message);
             }
+            return _this.ephemerals[p] = setTimeout(updateExpire, _this.ephemeralRefresh);
           });
-        }, _this.ephemeralRefresh);
+        };
+        updateExpire();
         return cb();
       };
     })(this));
@@ -275,7 +276,8 @@ RedisPort = (function(_super) {
     log.debug("Subscribing to " + p);
     this.subscriptions[subscriptionKey] = {
       path: p,
-      fn: fn
+      fn: fn,
+      role: role
     };
     return this.get(p, (function(_this) {
       return function(error, service) {

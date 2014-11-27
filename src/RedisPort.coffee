@@ -90,7 +90,7 @@ class RedisPort extends EventEmitter
 						sub.fn service
 						@emit "register", service
 				when "expired"
-					@emit "free", service
+					@emit "free", sub.role
 
 		@subscriber.on "error", (error) =>
 			log.warn "redis-port: Redis client error: #{error.message}"
@@ -163,7 +163,7 @@ class RedisPort extends EventEmitter
 			return cb error if error
 
 			async.eachSeries keys, ((k, cb) =>
-				clearInterval @ephemerals[k]
+				clearTimeout @ephemerals[k]
 
 				@client.del k, (error, result) =>
 					log.debug "del", k, result
@@ -195,15 +195,13 @@ class RedisPort extends EventEmitter
 			log.debug "setex", p, @ephemeralExpire
 			return cb error if error
 
-			clearInterval @ephemerals[p]
-
-			@ephemerals[p] = setInterval =>
+			updateExpire = =>
 				@client.pexpire p, @ephemeralExpire, (error, result) =>
 					log.debug "expire", p, result, @ephemeralRefresh
-					if error
-						log.error "Error setting expire on #{p}: #{error.message}"
-						clearInterval @ephemerals[p]
-			, @ephemeralRefresh
+					return log.error "Error setting expire on #{p}: #{error.message}" if error
+					@ephemerals[p] = setTimeout updateExpire, @ephemeralRefresh
+
+			updateExpire()
 
 			cb()
 
@@ -268,7 +266,7 @@ class RedisPort extends EventEmitter
 		@subscriber.psubscribe subscriptionKey
 		log.debug "Subscribing to #{p}"
 
-		@subscriptions[subscriptionKey] = path: p, fn: fn
+		@subscriptions[subscriptionKey] = path: p, fn: fn, role: role
 
 		@get p, (error, service) =>
 			fn service if not error and service
