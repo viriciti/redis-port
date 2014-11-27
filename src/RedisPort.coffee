@@ -88,9 +88,7 @@ class RedisPort extends EventEmitter
 						return log.error "redis-port: Get error #{error.message}" if error
 
 						sub.fn service
-						@emit "register", service
-				when "expired"
-					@emit "free", sub.role
+				# when "expired"
 
 		@subscriber.on "error", (error) =>
 			log.warn "redis-port: Redis client error: #{error.message}"
@@ -253,6 +251,21 @@ class RedisPort extends EventEmitter
 			@set "services/#{role}", { host: @host, port: port, role: role }, (error, stat) ->
 				return cb error if error
 				cb null, port
+
+	# Free a service, simply deletes and emits a free event
+	#
+	# @param [String, Object] Role or object with role and port
+	# @param [Function] Callback function
+	#
+	free: (role, cb) ->
+		p = @_cleanPath "services/#{role}"
+
+		@get p, (error, service) =>
+			return cb error if error
+
+			@del role, (error) ->
+				return cb error if error
+				cb()
 
 	# Set a watch function on a role
 	#

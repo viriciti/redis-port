@@ -71,11 +71,8 @@ RedisPort = (function(_super) {
               if (error) {
                 return log.error("redis-port: Get error " + error.message);
               }
-              sub.fn(service);
-              return _this.emit("register", service);
+              return sub.fn(service);
             });
-          case "expired":
-            return _this.emit("free", sub.role);
         }
       };
     })(this));
@@ -263,6 +260,24 @@ RedisPort = (function(_super) {
             return cb(error);
           }
           return cb(null, port);
+        });
+      };
+    })(this));
+  };
+
+  RedisPort.prototype.free = function(role, cb) {
+    var p;
+    p = this._cleanPath("services/" + role);
+    return this.get(p, (function(_this) {
+      return function(error, service) {
+        if (error) {
+          return cb(error);
+        }
+        return _this.del(role, function(error) {
+          if (error) {
+            return cb(error);
+          }
+          return cb();
         });
       };
     })(this));
