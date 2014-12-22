@@ -10,7 +10,7 @@ newClient = (p, cb) ->
 
 	rpc = new RedisPort
 		redisHost: "localhost"
-		redisPort: 9090
+		redisPort: 6379
 		host:      "localhost"
 		project:   p
 		env:       "development"
@@ -161,7 +161,7 @@ describe "Unit", ->
 		before (done) ->
 			client = new RedisPort
 				redisHost: "localhost"
-				redisPort: 9090
+				redisPort: 6379
 				host:      "localhost"
 				project:   "hmmbob"
 				env:       "development"

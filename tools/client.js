@@ -7,7 +7,7 @@ var env     = process.argv[5] || "development";
 
 var client = new RedisPort({
 	  redisHost: "localhost"
-	, redisPort: 9090
+	, redisPort: 6379
 	, host:      host
 	, project:   project
 	, env:       env

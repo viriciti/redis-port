@@ -70,7 +70,7 @@ describe "Integration", ->
 		before (done) ->
 			reporter = new RedisPort
 				redisHost: "localhost"
-				redisPort: 9090
+				redisPort: 6379
 				host:      "localhost"
 				project:   "project"
 				env:       "development"
