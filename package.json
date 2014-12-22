@@ -1,6 +1,6 @@
 {
   "name": "redis-port",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Service registry and port assignment using Redis",
   "repository": {
     "type": "git",
