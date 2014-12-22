@@ -5,9 +5,7 @@ Service registry and port assignment using Redis
 
 Prerequisites
 -------------
-Be sure to run a Redis server with `notify-keyspace-events` enabled.
-
-Add this line to your `redis.conf`
+Be sure to run a Redis server with `notify-keyspace-events` enabled. Add this line to your `redis.conf`
 
     notify-keyspace-events KEA
   
