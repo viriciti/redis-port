@@ -7,4 +7,7 @@ Prerequisites
 -------------
 Be sure to run a Redis server with `notify-keyspace-events` enabled.
 
-	sudo docker run -d -p 9090:6379 --name=redis-port redis redis-server --notify-keyspace-events KEA
+Add this line to your `redis.conf`
+  notify-keyspace-events KEA
+or run a docker process
+  sudo docker run -d --name=redis-port redis redis-server --notify-keyspace-events KEA
