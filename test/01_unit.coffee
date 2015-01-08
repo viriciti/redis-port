@@ -18,6 +18,10 @@ newClient = (p, cb) ->
 		cb rpc
 
 describe "Unit", ->
+	after (done) ->
+		client.once "stopped", done
+		client.stop()
+
 	client = null
 
 	describe "not running", ->
@@ -294,11 +298,11 @@ describe "Unit", ->
 		describe "Query tests", ->
 
 			it "Query with a non exsisting role, should not trigger onData", (done) ->
-				@timeout 50000
+				count = 0
 
 				client.query "GekkeGerrit", (data) ->
 					assert data
-					done()
+					done() if ++count is 1
 
 				client.register "GekkeGerrit", (error, port) ->
 					throw error if error
@@ -323,3 +327,50 @@ describe "Unit", ->
 
 				async.series functions, (error) ->
 					throw error if error
+
+			it "should trigger a wildcard - existing services", (done) ->
+
+				async.map ["hy_001-raw", "hy_002-raw", "hy_003-raw"], ((vid, cb) ->
+					client.register "listener-#{vid}", cb
+				), (error, ports) ->
+					throw error if error
+
+					assert.equal 3, ports.length
+
+					count   = 0
+					timeout = null
+
+					client.query "listener*", (data) ->
+						clearTimeout timeout
+						count++
+						timeout = setTimeout ->
+							done() if count is 3
+						, 200
+
+			it "should trigger a wildcard - existing and added services", (done) ->
+
+				async.map ["1", "2", "3"], ((vid, cb) ->
+					client.register "bladieblaat-#{vid}", cb
+				), (error, ports) ->
+					throw error if error
+
+					assert.equal 3, ports.length
+
+					count   = 0
+					timeout = null
+
+					client.query "bladieblaat*", (data) ->
+						clearTimeout timeout
+						count++
+						timeout = setTimeout ->
+							done() if count is 6
+						, 200
+
+					setTimeout ->
+						async.map ["4", "5", "6"], ((vid, cb) ->
+							client.register "bladieblaat-#{vid}", cb
+						), (error, ports) ->
+							throw error if error
+
+							assert.equal 3, ports.length
+					, 400

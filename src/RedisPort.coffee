@@ -41,6 +41,9 @@ class RedisPort extends EventEmitter
 	# @property [Object] Subscription registry
 	subscriptions:    {}
 
+	# @property [Object] Wildcard queries
+	wildcards:        {}
+
 	# Constructor
 	#
 	# @param options [Object] Main options
@@ -232,6 +235,18 @@ class RedisPort extends EventEmitter
 
 			cb null, ks
 
+	checkWildcard: (role, cb) ->
+		wildcardKey = _.chain @wildcards
+			.keys()
+			.find (w) -> role.match new RegExp w
+			.value()
+
+		return cb() unless wildcardKey
+
+		@addSubscription role, @wildcards[wildcardKey].fn
+
+		cb()
+
 	# Register a service
 	#
 	# @param [String, Object] Role or object with role and port
@@ -248,9 +263,13 @@ class RedisPort extends EventEmitter
 			while not port? or port in ports
 				port = 10000 + Math.floor Math.random() * 55000
 
-			@set "services/#{role}", { host: @host, port: port, role: role }, (error, stat) ->
+			@set "services/#{role}", { host: @host, port: port, role: role }, (error, stat) =>
 				return cb error if error
-				cb null, port
+
+				@checkWildcard role, (error) =>
+					return cb error if error
+
+					cb null, port
 
 	# Free a service, simply deletes and emits a free event
 	#
@@ -267,12 +286,12 @@ class RedisPort extends EventEmitter
 				return cb error if error
 				cb()
 
-	# Set a watch function on a role
+	# Add a subscription on a role
 	#
 	# @param [String] Role name
 	# @param [Function] Watch function, is executed when the role is set
 	#
-	query: (role, fn) ->
+	addSubscription: (role, fn) =>
 		p = @_cleanPath "services/#{role}"
 
 		subscriptionKey = "__keyspace@0__:#{p}"
@@ -284,12 +303,44 @@ class RedisPort extends EventEmitter
 		@get p, (error, service) =>
 			fn service if not error and service
 
+	# Set a watch function on a role
+	#
+	# @param [String] Role name
+	# @param [Function] Watch function, is executed when the role is set
+	#
+	query: (role, fn) ->
+		if role.length - 1 isnt role.indexOf "*"
+			# no wildcard
+			@addSubscription role, fn
+
+		else
+			# wildcard
+			wildcard = role.replace "*", ""
+
+			@getServices wildcard, (error, services) =>
+				for service in services
+					@addSubscription service.role, fn
+
+					role = role.replace "*", ""
+					unless @wildcards[role]
+						@wildcards[role] =
+							fn:    fn
+							roles: []
+
+					unless service.role in @wildcards[role].roles
+						@wildcards[role].roles.push service.role
+
 	# Get current known services
 	#
+	# @param [String] Optional wildcard string
 	# @param [Function] Callback function
 	#
-	getServices: (cb) ->
-		@list @servicesPath, (error, roles) =>
+	getServices: (wildcard, cb) ->
+		unless cb
+			cb       = wildcard
+			wildcard = ""
+
+		@list "#{@servicesPath}/#{wildcard}", (error, roles) =>
 			return cb error if error
 
 			services = []

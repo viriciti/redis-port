@@ -1,4 +1,5 @@
 var EventEmitter, RedisPort, assert, async, log, path, redis, _,
+  __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
   __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
@@ -38,7 +39,10 @@ RedisPort = (function(_super) {
 
   RedisPort.prototype.subscriptions = {};
 
+  RedisPort.prototype.wildcards = {};
+
   function RedisPort(options) {
+    this.addSubscription = __bind(this.addSubscription, this);
     var attr, _i, _len, _ref;
     this.redisHost = options.redisHost, this.redisPort = options.redisPort, this.host = options.host, this.env = options.env, this.project = options.project;
     _ref = ["redisHost", "redisPort", "env", "host", "project"];
@@ -237,6 +241,18 @@ RedisPort = (function(_super) {
     })(this));
   };
 
+  RedisPort.prototype.checkWildcard = function(role, cb) {
+    var wildcardKey;
+    wildcardKey = _.chain(this.wildcards).keys().find(function(w) {
+      return role.match(new RegExp(w));
+    }).value();
+    if (!wildcardKey) {
+      return cb();
+    }
+    this.addSubscription(role, this.wildcards[wildcardKey].fn);
+    return cb();
+  };
+
   RedisPort.prototype.register = function(role, cb) {
     var port;
     if (typeof role === 'object') {
@@ -259,7 +275,12 @@ RedisPort = (function(_super) {
           if (error) {
             return cb(error);
           }
-          return cb(null, port);
+          return _this.checkWildcard(role, function(error) {
+            if (error) {
+              return cb(error);
+            }
+            return cb(null, port);
+          });
         });
       };
     })(this));
@@ -283,7 +304,7 @@ RedisPort = (function(_super) {
     })(this));
   };
 
-  RedisPort.prototype.query = function(role, fn) {
+  RedisPort.prototype.addSubscription = function(role, fn) {
     var p, subscriptionKey;
     p = this._cleanPath("services/" + role);
     subscriptionKey = "__keyspace@0__:" + p;
@@ -303,8 +324,44 @@ RedisPort = (function(_super) {
     })(this));
   };
 
-  RedisPort.prototype.getServices = function(cb) {
-    return this.list(this.servicesPath, (function(_this) {
+  RedisPort.prototype.query = function(role, fn) {
+    var wildcard;
+    if (role.length - 1 !== role.indexOf("*")) {
+      return this.addSubscription(role, fn);
+    } else {
+      wildcard = role.replace("*", "");
+      return this.getServices(wildcard, (function(_this) {
+        return function(error, services) {
+          var service, _i, _len, _ref, _results;
+          _results = [];
+          for (_i = 0, _len = services.length; _i < _len; _i++) {
+            service = services[_i];
+            _this.addSubscription(service.role, fn);
+            role = role.replace("*", "");
+            if (!_this.wildcards[role]) {
+              _this.wildcards[role] = {
+                fn: fn,
+                roles: []
+              };
+            }
+            if (_ref = service.role, __indexOf.call(_this.wildcards[role].roles, _ref) < 0) {
+              _results.push(_this.wildcards[role].roles.push(service.role));
+            } else {
+              _results.push(void 0);
+            }
+          }
+          return _results;
+        };
+      })(this));
+    }
+  };
+
+  RedisPort.prototype.getServices = function(wildcard, cb) {
+    if (!cb) {
+      cb = wildcard;
+      wildcard = "";
+    }
+    return this.list("" + this.servicesPath + "/" + wildcard, (function(_this) {
       return function(error, roles) {
         var services;
         if (error) {
