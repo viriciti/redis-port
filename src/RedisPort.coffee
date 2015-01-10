@@ -1,9 +1,9 @@
+_                = require "underscore"
 assert           = require "assert"
 async            = require "async"
-{ EventEmitter } = require "events"
 path             = require "path"
 redis            = require "redis"
-_                = require "underscore"
+{ EventEmitter } = require "events"
 
 log = require "./log"
 
@@ -18,7 +18,7 @@ class RedisPort extends EventEmitter
 	client:           null
 
 	# @property [Object] Interval collection the resets the expire flags
-	ephemerals:       {}
+	ephemerals:       null
 
 	# @property [Number] Milliseconds to expire
 	ephemeralExpire:  15000
@@ -39,10 +39,10 @@ class RedisPort extends EventEmitter
 	subscriber:       null
 
 	# @property [Object] Subscription registry
-	subscriptions:    {}
+	subscriptions:    null
 
 	# @property [Object] Wildcard queries
-	wildcards:        {}
+	wildcards:        null
 
 	# Constructor
 	#
@@ -54,7 +54,7 @@ class RedisPort extends EventEmitter
 	# @option project [String] Project name
 	# @option prefix [String] Main prefix
 	#
-	constructor: (options) ->
+	constructor: (options, @id) ->
 		{ @redisHost, @redisPort, @host, @env, @project } = options
 
 		assert @[attr], "`#{attr}` is required" for attr in [
@@ -64,6 +64,8 @@ class RedisPort extends EventEmitter
 			"host"      # client hostname
 			"project"   # project name
 		]
+
+		@id or= Math.round Math.random() * 10000
 
 		@ephemeralExpire  = options.ephemeralExpire  or @ephemeralExpire
 		@ephemeralRefresh = options.ephemeralRefresh or @ephemeralRefresh
@@ -76,44 +78,65 @@ class RedisPort extends EventEmitter
 	# @param [Function] Callback function
 	#
 	start: (cb) ->
-		log.debug "redis-port: Connecting to #{@redisHost}:#{@redisPort}"
+		log.debug "#{@id}: connecting to #{@redisHost}:#{@redisPort}"
+
+		@ephemerals    = {}
+		@subscriptions = {}
+		@wildcards     = {}
 
 		@subscriber = redis.createClient @redisPort, @redisHost, retry_max_delay: 10000
 
 		@subscriber.on "pmessage", (pattern, channel, key) =>
-			log.debug "pmessage", pattern, key
-			sub = @subscriptions[pattern]
-			return log.debug "No subscription for #{pattern}" unless sub
+			log.debug "#{@id}: pmessage", pattern, key
 
 			switch key
 				when "set"
-					@get sub.path, (error, service) =>
-						return log.error "redis-port: Get error #{error.message}" if error
+					if pattern.length - 1 is pattern.indexOf "*"
+						wildcard    = @wildcards[pattern]
+						serviceRole = channel.replace "__keyspace@0__:", ""
 
-						sub.fn service
+						@get serviceRole, (error, service) ->
+							return log.error "get error #{error.message}" if error
+
+							wildcard.fn service
+
+					else
+						sub = @subscriptions[pattern]
+						return log.debug "#{@id}: no subscription for #{pattern}" unless sub
+
+						@get sub.path, (error, service) =>
+							return log.error "get error #{error.message}" if error
+
+							sub.fn service
 				# when "expired"
 
 		@subscriber.on "error", (error) =>
-			log.warn "redis-port: Redis client error: #{error.message}"
+			log.warn "Redis client error: #{error.message}"
 			@emit "reconnect"
 
 		@client = redis.createClient @redisPort, @redisHost, retry_max_delay: 10000
 
 		@client.once "connect", (error) =>
-			log.debug "redis-port: Connected."
+			log.debug "#{@id}: Connected."
 			@emit "started"
 			cb?()
 
 		@client.on "error", (error) =>
-			log.warn "redis-port: Redis client error: #{error.message}"
+			log.warn "Redis client error: #{error.message}"
 			@emit "reconnect"
 
 	# Stop the client
 	#
 	stop: ->
-		@client.quit()
-		@subscriber.quit()
+		log.debug "#{@id}: stopping"
+
+		@client.end()
+		@subscriber.end()
+
+		clearTimeout timeout for p, timeout of @ephemerals
+
 		@emit "stopped"
+		log.debug "#{@id}: stopped"
 
 	# Persistantly set a key-value
 	#
@@ -124,7 +147,7 @@ class RedisPort extends EventEmitter
 	pset: (p, data, cb) ->
 		p = @_cleanPath p
 		@client.set p, JSON.stringify(data), (error, result) ->
-			log.debug "set", p, result
+			log.debug "#{@id}: set", p, result
 			return cb error if error
 			cb()
 
@@ -146,8 +169,8 @@ class RedisPort extends EventEmitter
 	get: (p, cb) ->
 		p = @_cleanPath p
 
-		@client.get p, (error, data) ->
-			log.debug "get", p
+		@client.get p, (error, data) =>
+			log.debug "#{@id}: get", p
 			return cb error if error
 			cb null, JSON.parse data
 
@@ -160,14 +183,14 @@ class RedisPort extends EventEmitter
 		p = @_cleanPath p
 
 		@client.keys "#{p}*", (error, keys) =>
-			log.debug "keys", "#{p}*", keys
+			log.debug "#{@id}: del keys", "#{p}*", keys
 			return cb error if error
 
 			async.eachSeries keys, ((k, cb) =>
 				clearTimeout @ephemerals[k]
 
 				@client.del k, (error, result) =>
-					log.debug "del", k, result
+					log.debug "#{@id}: del", k, result
 					return cb error if error
 					cb()
 			), (error) =>
@@ -193,12 +216,12 @@ class RedisPort extends EventEmitter
 		p = @_cleanPath p
 
 		@client.psetex p, @ephemeralExpire, JSON.stringify(data), (error, result) =>
-			log.debug "setex", p, @ephemeralExpire
+			log.debug "#{@id}: setex", p, @ephemeralExpire
 			return cb error if error
 
 			updateExpire = =>
 				@client.pexpire p, @ephemeralExpire, (error, result) =>
-					log.debug "expire", p, result, @ephemeralRefresh
+					log.debug "#{@id}: expire", p, result, @ephemeralRefresh
 					return log.error "Error setting expire on #{p}: #{error.message}" if error
 					@ephemerals[p] = setTimeout updateExpire, @ephemeralRefresh
 
@@ -224,9 +247,12 @@ class RedisPort extends EventEmitter
 	#
 	list: (p, cb) ->
 		p = @_cleanPath p
+		p = p.replace "*", "" if p.length - 1 is p.indexOf "*"
+
+		log.debug "#{@id}: list", "#{p}*"
 
 		@client.keys "#{p}*", (error, keys) =>
-			log.debug "keys", "#{p}*", keys
+			log.debug "#{@id}: list keys", "#{p}*", keys
 			return cb error if error
 
 			ks = []
@@ -235,24 +261,14 @@ class RedisPort extends EventEmitter
 
 			cb null, ks
 
-	checkWildcard: (role, cb) ->
-		wildcardKey = _.chain @wildcards
-			.keys()
-			.find (w) -> role.match new RegExp w
-			.value()
-
-		return cb() unless wildcardKey
-
-		@addSubscription role, @wildcards[wildcardKey].fn
-
-		cb()
-
 	# Register a service
 	#
 	# @param [String, Object] Role or object with role and port
 	# @param [Function] Callback function
 	#
 	register: (role, cb) ->
+		log.debug "#{@id}: register", role
+
 		if typeof role is 'object'
 			port = role.port
 			role = role.role
@@ -264,12 +280,7 @@ class RedisPort extends EventEmitter
 				port = 10000 + Math.floor Math.random() * 55000
 
 			@set "services/#{role}", { host: @host, port: port, role: role }, (error, stat) =>
-				return cb error if error
-
-				@checkWildcard role, (error) =>
-					return cb error if error
-
-					cb null, port
+				cb error, port
 
 	# Free a service, simply deletes and emits a free event
 	#
@@ -286,49 +297,30 @@ class RedisPort extends EventEmitter
 				return cb error if error
 				cb()
 
-	# Add a subscription on a role
-	#
-	# @param [String] Role name
-	# @param [Function] Watch function, is executed when the role is set
-	#
-	addSubscription: (role, fn) =>
-		p = @_cleanPath "services/#{role}"
-
-		subscriptionKey = "__keyspace@0__:#{p}"
-		@subscriber.psubscribe subscriptionKey
-		log.debug "Subscribing to #{p}"
-
-		@subscriptions[subscriptionKey] = path: p, fn: fn, role: role
-
-		@get p, (error, service) =>
-			fn service if not error and service
-
 	# Set a watch function on a role
 	#
 	# @param [String] Role name
 	# @param [Function] Watch function, is executed when the role is set
 	#
 	query: (role, fn) ->
-		if role.length - 1 isnt role.indexOf "*"
-			# no wildcard
-			@addSubscription role, fn
+		log.debug "#{@id}: query", role
+
+		p = @_cleanPath "services/#{role}"
+
+		subscriptionKey = "__keyspace@0__:#{p}"
+		@subscriber.psubscribe subscriptionKey
+
+		if role.length - 1 is role.indexOf "*"
+			@wildcards[subscriptionKey] = path: p, fn: fn, role: role
+
+			@getServices role, (error, services) ->
+				fn service for service in services
 
 		else
-			# wildcard
-			wildcard = role.replace "*", ""
+			@subscriptions[subscriptionKey] = path: p, fn: fn, role: role
 
-			@getServices wildcard, (error, services) =>
-				for service in services
-					@addSubscription service.role, fn
-
-					role = role.replace "*", ""
-					unless @wildcards[role]
-						@wildcards[role] =
-							fn:    fn
-							roles: []
-
-					unless service.role in @wildcards[role].roles
-						@wildcards[role].roles.push service.role
+			@get p, (error, service) =>
+				fn service if service
 
 	# Get current known services
 	#
@@ -338,9 +330,14 @@ class RedisPort extends EventEmitter
 	getServices: (wildcard, cb) ->
 		unless cb
 			cb       = wildcard
-			wildcard = ""
+			wildcard = null
 
-		@list "#{@servicesPath}/#{wildcard}", (error, roles) =>
+		queryPath  = @servicesPath
+		queryPath += "/#{wildcard}" if wildcard
+
+		log.debug "#{@id}: get services", wildcard, queryPath
+
+		@list queryPath, (error, roles) =>
 			return cb error if error
 
 			services = []
@@ -350,14 +347,15 @@ class RedisPort extends EventEmitter
 					services.push s
 					cb()
 			), (error) =>
-				return cb error if error
-				cb null, services
+				cb error, services
 
 	# Get the current active ports
 	#
 	# @param [Function] Callback function
 	#
 	getPorts: (cb) ->
+		log.debug "#{@id}: get ports"
+
 		@getServices (error, services) =>
 			return cb error if error
 
