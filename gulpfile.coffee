@@ -1,11 +1,10 @@
-(require "id-project")
-	browserify:    enabled: false
-	copy:          enabled: false
-	less:          enabled: false
-	livereload:    enabled: false
-	nodemon:       enabled: false
-	forever:       enabled: false
+(require "coffee-project")
 	documentation: enabled: false
+	livereload:    enabled: false
+	browserify:    enabled: false
+	less:          enabled: false
+	forever:       enabled: false
 	clean:         enabled: true
+	copy:          enabled: true
 	watch:         enabled: true
 	tests:         enabled: true

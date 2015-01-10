@@ -3,10 +3,8 @@ assert = require "assert"
 
 RedisPort = require "../src/RedisPort"
 
-newClient = (p, cb) ->
-	unless cb
-		cb = p
-		p  = "undisclosed"
+newClient = (p, id, cb) ->
+	p or= "undisclosed#{Math.round Math.random() * 100}"
 
 	rpc = new RedisPort
 		redisHost: "localhost"
@@ -14,15 +12,14 @@ newClient = (p, cb) ->
 		host:      "localhost"
 		project:   p
 		env:       "development"
+	, id
+
 	rpc.start ->
 		cb rpc
 
-describe "Unit", ->
-	after (done) ->
-		client.once "stopped", done
-		client.stop()
+client = null
 
-	client = null
+describe "Unit", ->
 
 	describe "not running", ->
 		it "should wait or retry", (done) ->
@@ -42,7 +39,7 @@ describe "Unit", ->
 
 	describe "connect to runnning service", ->
 		it "should connect", (done) ->
-			newClient (c) ->
+			newClient null, null, (c) ->
 				client = c
 				done()
 
@@ -213,7 +210,7 @@ describe "Unit", ->
 
 			it "new client", (done) ->
 				client.on "stopped", ->
-					newClient (c) ->
+					newClient null, null, (c) ->
 						client = c
 						done()
 				client.stop()
@@ -226,7 +223,7 @@ describe "Unit", ->
 	describe "services", ->
 		before (done) ->
 			client.on "stopped", ->
-				newClient "hmzjaa", (c) ->
+				newClient null, null, (c) ->
 					client = c
 					setTimeout ->
 						done()
@@ -240,13 +237,6 @@ describe "Unit", ->
 			{ host: "localhost", port: 30000, role: "hans"   }
 			{ host: "localhost", port: 40000, role: "ferry" }
 		]
-
-		describe "get ports - empty", ->
-			it "should get the services ports (empty)", (done) ->
-				client.getPorts (error, ports) ->
-					throw error if error
-					assert.deepEqual ports, []
-					done()
 
 		describe "get ports - filled", ->
 
@@ -287,13 +277,20 @@ describe "Unit", ->
 
 		describe "register a service by role", ->
 			it "should register a service by name", (done) ->
-				client.register "some-serverice", (error, port) ->
+				client.register "some-unique-service", (error, port) ->
 					throw error if error
 					client.getPorts (error, ports) ->
 						return error if error
 						assert port in ports
 						assert not (port in services.map (s) -> s.port)
 						done()
+
+			it "should be listed with a wildcard", (done) ->
+				client.getServices "some", (error, services) ->
+					throw error if error
+					assert services.length
+					assert.equal "some-unique-service", services[0].role
+					done()
 
 		describe "Query tests", ->
 
@@ -329,10 +326,12 @@ describe "Unit", ->
 					throw error if error
 
 			it "should trigger a wildcard - existing services", (done) ->
-
-				async.map ["hy_001-raw", "hy_002-raw", "hy_003-raw"], ((vid, cb) ->
-					client.register "listener-#{vid}", cb
-				), (error, ports) ->
+				services = [
+					"listener-hy_001-raw"
+					"listener-hy_002-raw"
+					"listener-hy_003-raw"
+				]
+				async.map services, ((role, cb) -> client.register role, cb), (error, ports) ->
 					throw error if error
 
 					assert.equal 3, ports.length
@@ -340,12 +339,9 @@ describe "Unit", ->
 					count   = 0
 					timeout = null
 
-					client.query "listener*", (data) ->
-						clearTimeout timeout
-						count++
-						timeout = setTimeout ->
-							done() if count is 3
-						, 200
+					client.query "listener*", (service) ->
+						assert (service.role in services)
+						done() if ++count is 3
 
 			it "should trigger a wildcard - existing and added services", (done) ->
 
@@ -357,20 +353,54 @@ describe "Unit", ->
 					assert.equal 3, ports.length
 
 					count   = 0
-					timeout = null
+					client.query "bladieblaat*", (service) ->
+						assert 0 is service.role.indexOf "bladieblaat"
+						done() if ++count is 6
 
-					client.query "bladieblaat*", (data) ->
-						clearTimeout timeout
-						count++
-						timeout = setTimeout ->
-							done() if count is 6
-						, 200
+					async.map ["4", "5", "6"], ((vid, cb) ->
+						client.register "bladieblaat-#{vid}", cb
+					), (error, ports) ->
+						throw error if error
+						assert.equal 3, ports.length
 
-					setTimeout ->
-						async.map ["4", "5", "6"], ((vid, cb) ->
-							client.register "bladieblaat-#{vid}", cb
+	describe "2 clients on the same project", ->
+		it "should get notified of each others registerd services", (done) ->
+			newClient "same-project", "client-a", (clientA) ->
+				newClient "same-project", "client-b", (clientB) ->
+					clientA.query "spawner*", (service) ->
+						assert service
+						assert.equal "spawner-hy_001-raw", service.role
+						done()
+
+					clientB.register "spawner-hy_001-raw", (error, port) ->
+						throw error if error
+
+	describe "2 clients on one redis-port host", ->
+		describe "two seperate clients should not interfere", ->
+
+			it "create services on client1", (done) ->
+
+				wildcard = "bladieblaat"
+				vids = ["yoy_001", "yoy_002", "yoy_003"]
+
+				count = 0
+				onRegister1 = ->
+					done() if ++count is 3
+
+				onRegister2 = ->
+					throw new Error "Callback of client 2 was called!"
+
+				newClient "nice-project-1", "client1", (c) ->
+					client1 = c
+
+					newClient "nice-project-2", "client2", (c) ->
+						client2 = c
+
+						client1.query "#{wildcard}*", onRegister1
+						client2.query "#{wildcard}*", onRegister2
+
+						async.map vids, ((vid, cb) ->
+							client1.register "#{wildcard}-#{vid}-raw", cb
 						), (error, ports) ->
 							throw error if error
 
-							assert.equal 3, ports.length
-					, 400
