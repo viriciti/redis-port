@@ -41,9 +41,6 @@ class RedisPort extends EventEmitter
 	# @property [Object] Subscription registry
 	subscriptions:    null
 
-	# @property [Object] Wildcard queries
-	wildcards:        null
-
 	# Constructor
 	#
 	# @param options [Object] Main options
@@ -82,7 +79,6 @@ class RedisPort extends EventEmitter
 
 		@ephemerals    = {}
 		@subscriptions = {}
-		@wildcards     = {}
 
 		@subscriber = redis.createClient @redisPort, @redisHost, retry_max_delay: 10000
 
@@ -91,24 +87,32 @@ class RedisPort extends EventEmitter
 
 			switch key
 				when "set"
+					sub = @subscriptions[pattern]
+					return log.debug "#{@id}: no subscription for #{pattern}" unless sub
+
 					if pattern.length - 1 is pattern.indexOf "*"
-						wildcard    = @wildcards[pattern]
 						serviceRole = channel.replace "__keyspace@0__:", ""
 
 						@get serviceRole, (error, service) ->
 							return log.error "get error #{error.message}" if error
 
-							wildcard.fn service
+							sub.regFn? service
 
 					else
-						sub = @subscriptions[pattern]
-						return log.debug "#{@id}: no subscription for #{pattern}" unless sub
-
 						@get sub.path, (error, service) =>
 							return log.error "get error #{error.message}" if error
 
-							sub.fn service
-				# when "expired"
+							sub.regFn? service
+
+				when "del"
+					sub = @subscriptions[pattern]
+					return log.debug "#{@id}: no subscription for #{pattern}" unless sub
+
+					if pattern.length - 1 is pattern.indexOf "*"
+						serviceRole = channel.replace "__keyspace@0__:", ""
+						sub.freeFn? serviceRole.replace "#{@rootPath}/services/", ""
+					else
+						sub.freeFn? sub.role
 
 		@subscriber.on "error", (error) =>
 			log.warn "Redis client error: #{error.message}"
@@ -130,13 +134,15 @@ class RedisPort extends EventEmitter
 	stop: ->
 		log.debug "#{@id}: stopping"
 
-		@client.end()
-		@subscriber.end()
+		async.each (Object.keys @ephemerals), ((key, cb) =>
+			clearTimeout @ephemerals[key]
+			@del key, cb
+		), =>
+			@client.end()
+			@subscriber.end()
 
-		clearTimeout timeout for p, timeout of @ephemerals
-
-		@emit "stopped"
-		log.debug "#{@id}: stopped"
+			@emit "stopped"
+			log.debug "#{@id}: stopped"
 
 	# Persistantly set a key-value
 	#
@@ -148,8 +154,7 @@ class RedisPort extends EventEmitter
 		p = @_cleanPath p
 		@client.set p, JSON.stringify(data), (error, result) ->
 			log.debug "#{@id}: set", p, result
-			return cb error if error
-			cb()
+			cb? error
 
 	# Set array of persistant key-values
 	#
@@ -157,9 +162,10 @@ class RedisPort extends EventEmitter
 	# @param [Function] Callback function
 	#
 	mpset: (arr, cb) ->
-		return cb new Error "No 2D array" unless Array.isArray arr
-		return cb new Error "No 2D array" if arr.length and not Array.isArray arr[0]
-		async.each arr, ((a, cb) => @pset a[0], a[1], cb), cb
+		return cb? new Error "No 2D array" unless Array.isArray arr
+		return cb? new Error "No 2D array" if arr.length and not Array.isArray arr[0]
+		async.each arr, ((a, cb) => @pset a[0], a[1], cb), (error) ->
+			cb? error
 
 	# Get a value by key
 	#
@@ -171,8 +177,7 @@ class RedisPort extends EventEmitter
 
 		@client.get p, (error, data) =>
 			log.debug "#{@id}: get", p
-			return cb error if error
-			cb null, JSON.parse data
+			cb error, JSON.parse data
 
 	# Delete by key
 	#
@@ -183,19 +188,17 @@ class RedisPort extends EventEmitter
 		p = @_cleanPath p
 
 		@client.keys "#{p}*", (error, keys) =>
-			log.debug "#{@id}: del keys", "#{p}*", keys
-			return cb error if error
+			log.debug "#{@id}: keys", "#{p}*", keys
+			return cb? error if error
 
 			async.eachSeries keys, ((k, cb) =>
 				clearTimeout @ephemerals[k]
 
 				@client.del k, (error, result) =>
 					log.debug "#{@id}: del", k, result
-					return cb error if error
-					cb()
+					cb error
 			), (error) =>
-				return cb error if error
-				cb()
+				cb? error
 
 	# Delete multiple paths
 	#
@@ -203,8 +206,9 @@ class RedisPort extends EventEmitter
 	# @param [Function] Callback function
 	#
 	mdel: (keys, cb) ->
-		return cb new Error "No array" unless Array.isArray keys
-		async.each keys, ((key, cb) => @del key, cb), cb
+		return cb? new Error "No array" unless Array.isArray keys
+		async.each keys, ((key, cb) => @del key, cb), (error) ->
+			cb? error
 
 	# Ephemeral set a key-value
 	#
@@ -217,7 +221,7 @@ class RedisPort extends EventEmitter
 
 		@client.psetex p, @ephemeralExpire, JSON.stringify(data), (error, result) =>
 			log.debug "#{@id}: setex", p, @ephemeralExpire
-			return cb error if error
+			return cb? error if error
 
 			updateExpire = =>
 				@client.pexpire p, @ephemeralExpire, (error, result) =>
@@ -227,7 +231,7 @@ class RedisPort extends EventEmitter
 
 			updateExpire()
 
-			cb()
+			cb?()
 
 	# Set multiple key-values
 	#
@@ -235,10 +239,11 @@ class RedisPort extends EventEmitter
 	# @param [Function] Callback function
 	#
 	mset: (arr, cb) ->
-		return cb new Error "No 2D array" unless Array.isArray arr
-		return cb new Error "No 2D array" if arr.length and not Array.isArray arr[0]
+		return cb? new Error "No 2D array" unless Array.isArray arr
+		return cb? new Error "No 2D array" if arr.length and not Array.isArray arr[0]
 
-		async.each arr, ((a, cb) => @set a[0], a[1], cb), cb
+		async.each arr, ((a, cb) => @set a[0], a[1], cb), (error) ->
+			cb? error
 
 	# List all value by a path
 	#
@@ -288,21 +293,22 @@ class RedisPort extends EventEmitter
 	# @param [Function] Callback function
 	#
 	free: (role, cb) ->
+		log.debug "#{@id}: free", role
+
 		p = @_cleanPath "services/#{role}"
 
 		@get p, (error, service) =>
-			return cb error if error
+			return cb? error if error
 
-			@del role, (error) ->
-				return cb error if error
-				cb()
+			@del p, (error) ->
+				cb? error, service
 
 	# Set a watch function on a role
 	#
 	# @param [String] Role name
 	# @param [Function] Watch function, is executed when the role is set
 	#
-	query: (role, fn) ->
+	query: (role, regFn, freeFn) ->
 		log.debug "#{@id}: query", role
 
 		p = @_cleanPath "services/#{role}"
@@ -310,17 +316,21 @@ class RedisPort extends EventEmitter
 		subscriptionKey = "__keyspace@0__:#{p}"
 		@subscriber.psubscribe subscriptionKey
 
-		if role.length - 1 is role.indexOf "*"
-			@wildcards[subscriptionKey] = path: p, fn: fn, role: role
+		@subscriptions[subscriptionKey] =
+			path:   p
+			role:   role
+			regFn:  regFn
+			freeFn: freeFn
 
+		if role.length - 1 is role.indexOf "*"
 			@getServices role, (error, services) ->
-				fn service for service in services
+				return log.error "#{@id}: Error get services: #{error.message}" if error
+				regFn service for service in services
 
 		else
-			@subscriptions[subscriptionKey] = path: p, fn: fn, role: role
-
 			@get p, (error, service) =>
-				fn service if service
+				return log.error "#{@id}: Error get: #{error.message}" if error
+				regFn service if service
 
 	# Get current known services
 	#
