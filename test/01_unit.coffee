@@ -186,19 +186,21 @@ describe "Unit", ->
 							throw error if error
 							assert.equal null, data
 							done()
-				, 400
+				, 10
 				client.get "some", (error, data) ->
 					throw error if error
 					assert data
 
 	describe "reconnect", ->
+		ephemerals = [
+			["someWhere", "a"]
+			["someHere",  "b"]
+			["someThere", "c"]
+		]
+
 		describe "all ephemeral is gone", ->
 			it "set some last ephemerals", (done) ->
-				client.mset [
-					["someWhere", "a"]
-					["someHere",  "b"]
-					["someThere", "c"]
-				], (error) ->
+				client.mset ephemerals, (error) ->
 					client.list "", (error, list) ->
 						throw error if error
 						async.each ["someWhere", "someHere", "someThere"], ((el, cb) ->
@@ -217,7 +219,8 @@ describe "Unit", ->
 
 			it "list", (done) ->
 				client.list "", (error, list) ->
-					assert.deepEqual list, []
+					for e in ephemerals
+						assert e[0] not in list
 					done()
 
 	describe "services", ->
@@ -304,6 +307,35 @@ describe "Unit", ->
 				client.register "GekkeGerrit", (error, port) ->
 					throw error if error
 
+			it "Query and free", (done) ->
+				count = 0
+				client.query "Harry", ((data) ->
+					client.free "Harry", (error, service) ->
+						throw error if error
+
+						assert.equal "Harry", service.role
+				), (data) ->
+					done() if ++count is 1
+
+				client.register "Harry", (error, port) ->
+					throw error if error
+
+			it "Query and free - wildcard", (done) ->
+				roles = ["Harry-1", "Harry-2", "Harry-3"]
+
+				count = 0
+				client.query "Harry*", ((data) ->
+					client.free "Harry*", (error, service) ->
+						throw error if error
+				), (role) ->
+					assert role in roles
+					done() if ++count is 3
+
+				async.each roles, ((role, cb) ->
+					client.register role, (error, port) ->
+						throw error if error
+				)
+
 			it "should trigger onData 4 times after issueing a single query", (done) ->
 				@timeout 100000
 				role = "web"
@@ -380,7 +412,7 @@ describe "Unit", ->
 
 			it "create services on client1", (done) ->
 
-				wildcard = "bladieblaat"
+				wildcard = "bladiebap"
 				vids = ["yoy_001", "yoy_002", "yoy_003"]
 
 				count = 0
