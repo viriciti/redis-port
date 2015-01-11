@@ -38,8 +38,6 @@ RedisPort = (function(_super) {
 
   RedisPort.prototype.subscriptions = null;
 
-  RedisPort.prototype.wildcards = null;
-
   function RedisPort(options, id) {
     var attr, _i, _len, _ref;
     this.id = id;
@@ -60,36 +58,46 @@ RedisPort = (function(_super) {
     log.debug("" + this.id + ": connecting to " + this.redisHost + ":" + this.redisPort);
     this.ephemerals = {};
     this.subscriptions = {};
-    this.wildcards = {};
     this.subscriber = redis.createClient(this.redisPort, this.redisHost, {
       retry_max_delay: 10000
     });
     this.subscriber.on("pmessage", (function(_this) {
       return function(pattern, channel, key) {
-        var serviceRole, sub, wildcard;
+        var serviceRole, sub;
         log.debug("" + _this.id + ": pmessage", pattern, key);
         switch (key) {
           case "set":
+            sub = _this.subscriptions[pattern];
+            if (!sub) {
+              return log.debug("" + _this.id + ": no subscription for " + pattern);
+            }
             if (pattern.length - 1 === pattern.indexOf("*")) {
-              wildcard = _this.wildcards[pattern];
               serviceRole = channel.replace("__keyspace@0__:", "");
               return _this.get(serviceRole, function(error, service) {
                 if (error) {
                   return log.error("get error " + error.message);
                 }
-                return wildcard.fn(service);
+                return typeof sub.regFn === "function" ? sub.regFn(service) : void 0;
               });
             } else {
-              sub = _this.subscriptions[pattern];
-              if (!sub) {
-                return log.debug("" + _this.id + ": no subscription for " + pattern);
-              }
               return _this.get(sub.path, function(error, service) {
                 if (error) {
                   return log.error("get error " + error.message);
                 }
-                return sub.fn(service);
+                return typeof sub.regFn === "function" ? sub.regFn(service) : void 0;
               });
+            }
+            break;
+          case "del":
+            sub = _this.subscriptions[pattern];
+            if (!sub) {
+              return log.debug("" + _this.id + ": no subscription for " + pattern);
+            }
+            if (pattern.length - 1 === pattern.indexOf("*")) {
+              serviceRole = channel.replace("__keyspace@0__:", "");
+              return typeof sub.freeFn === "function" ? sub.freeFn(serviceRole.replace("" + _this.rootPath + "/services/", "")) : void 0;
+            } else {
+              return typeof sub.freeFn === "function" ? sub.freeFn(sub.role) : void 0;
             }
         }
       };
@@ -119,42 +127,44 @@ RedisPort = (function(_super) {
   };
 
   RedisPort.prototype.stop = function() {
-    var p, timeout, _ref;
     log.debug("" + this.id + ": stopping");
-    this.client.end();
-    this.subscriber.end();
-    _ref = this.ephemerals;
-    for (p in _ref) {
-      timeout = _ref[p];
-      clearTimeout(timeout);
-    }
-    this.emit("stopped");
-    return log.debug("" + this.id + ": stopped");
+    return async.each(Object.keys(this.ephemerals), ((function(_this) {
+      return function(key, cb) {
+        clearTimeout(_this.ephemerals[key]);
+        return _this.del(key, cb);
+      };
+    })(this)), (function(_this) {
+      return function() {
+        _this.client.end();
+        _this.subscriber.end();
+        _this.emit("stopped");
+        return log.debug("" + _this.id + ": stopped");
+      };
+    })(this));
   };
 
   RedisPort.prototype.pset = function(p, data, cb) {
     p = this._cleanPath(p);
     return this.client.set(p, JSON.stringify(data), function(error, result) {
       log.debug("" + this.id + ": set", p, result);
-      if (error) {
-        return cb(error);
-      }
-      return cb();
+      return typeof cb === "function" ? cb(error) : void 0;
     });
   };
 
   RedisPort.prototype.mpset = function(arr, cb) {
     if (!Array.isArray(arr)) {
-      return cb(new Error("No 2D array"));
+      return typeof cb === "function" ? cb(new Error("No 2D array")) : void 0;
     }
     if (arr.length && !Array.isArray(arr[0])) {
-      return cb(new Error("No 2D array"));
+      return typeof cb === "function" ? cb(new Error("No 2D array")) : void 0;
     }
     return async.each(arr, ((function(_this) {
       return function(a, cb) {
         return _this.pset(a[0], a[1], cb);
       };
-    })(this)), cb);
+    })(this)), function(error) {
+      return typeof cb === "function" ? cb(error) : void 0;
+    });
   };
 
   RedisPort.prototype.get = function(p, cb) {
@@ -162,10 +172,7 @@ RedisPort = (function(_super) {
     return this.client.get(p, (function(_this) {
       return function(error, data) {
         log.debug("" + _this.id + ": get", p);
-        if (error) {
-          return cb(error);
-        }
-        return cb(null, JSON.parse(data));
+        return cb(error, JSON.parse(data));
       };
     })(this));
   };
@@ -174,24 +181,18 @@ RedisPort = (function(_super) {
     p = this._cleanPath(p);
     return this.client.keys("" + p + "*", (function(_this) {
       return function(error, keys) {
-        log.debug("" + _this.id + ": del keys", "" + p + "*", keys);
+        log.debug("" + _this.id + ": keys", "" + p + "*", keys);
         if (error) {
-          return cb(error);
+          return typeof cb === "function" ? cb(error) : void 0;
         }
         return async.eachSeries(keys, (function(k, cb) {
           clearTimeout(_this.ephemerals[k]);
           return _this.client.del(k, function(error, result) {
             log.debug("" + _this.id + ": del", k, result);
-            if (error) {
-              return cb(error);
-            }
-            return cb();
+            return cb(error);
           });
         }), function(error) {
-          if (error) {
-            return cb(error);
-          }
-          return cb();
+          return typeof cb === "function" ? cb(error) : void 0;
         });
       };
     })(this));
@@ -199,13 +200,15 @@ RedisPort = (function(_super) {
 
   RedisPort.prototype.mdel = function(keys, cb) {
     if (!Array.isArray(keys)) {
-      return cb(new Error("No array"));
+      return typeof cb === "function" ? cb(new Error("No array")) : void 0;
     }
     return async.each(keys, ((function(_this) {
       return function(key, cb) {
         return _this.del(key, cb);
       };
-    })(this)), cb);
+    })(this)), function(error) {
+      return typeof cb === "function" ? cb(error) : void 0;
+    });
   };
 
   RedisPort.prototype.set = function(p, data, cb) {
@@ -215,7 +218,7 @@ RedisPort = (function(_super) {
         var updateExpire;
         log.debug("" + _this.id + ": setex", p, _this.ephemeralExpire);
         if (error) {
-          return cb(error);
+          return typeof cb === "function" ? cb(error) : void 0;
         }
         updateExpire = function() {
           return _this.client.pexpire(p, _this.ephemeralExpire, function(error, result) {
@@ -227,23 +230,25 @@ RedisPort = (function(_super) {
           });
         };
         updateExpire();
-        return cb();
+        return typeof cb === "function" ? cb() : void 0;
       };
     })(this));
   };
 
   RedisPort.prototype.mset = function(arr, cb) {
     if (!Array.isArray(arr)) {
-      return cb(new Error("No 2D array"));
+      return typeof cb === "function" ? cb(new Error("No 2D array")) : void 0;
     }
     if (arr.length && !Array.isArray(arr[0])) {
-      return cb(new Error("No 2D array"));
+      return typeof cb === "function" ? cb(new Error("No 2D array")) : void 0;
     }
     return async.each(arr, ((function(_this) {
       return function(a, cb) {
         return _this.set(a[0], a[1], cb);
       };
-    })(this)), cb);
+    })(this)), function(error) {
+      return typeof cb === "function" ? cb(error) : void 0;
+    });
   };
 
   RedisPort.prototype.list = function(p, cb) {
@@ -297,53 +302,53 @@ RedisPort = (function(_super) {
 
   RedisPort.prototype.free = function(role, cb) {
     var p;
+    log.debug("" + this.id + ": free", role);
     p = this._cleanPath("services/" + role);
     return this.get(p, (function(_this) {
       return function(error, service) {
         if (error) {
-          return cb(error);
+          return typeof cb === "function" ? cb(error) : void 0;
         }
-        return _this.del(role, function(error) {
-          if (error) {
-            return cb(error);
-          }
-          return cb();
+        return _this.del(p, function(error) {
+          return typeof cb === "function" ? cb(error, service) : void 0;
         });
       };
     })(this));
   };
 
-  RedisPort.prototype.query = function(role, fn) {
+  RedisPort.prototype.query = function(role, regFn, freeFn) {
     var p, subscriptionKey;
     log.debug("" + this.id + ": query", role);
     p = this._cleanPath("services/" + role);
     subscriptionKey = "__keyspace@0__:" + p;
     this.subscriber.psubscribe(subscriptionKey);
+    this.subscriptions[subscriptionKey] = {
+      path: p,
+      role: role,
+      regFn: regFn,
+      freeFn: freeFn
+    };
     if (role.length - 1 === role.indexOf("*")) {
-      this.wildcards[subscriptionKey] = {
-        path: p,
-        fn: fn,
-        role: role
-      };
       return this.getServices(role, function(error, services) {
         var service, _i, _len, _results;
+        if (error) {
+          return log.error("" + this.id + ": Error get services: " + error.message);
+        }
         _results = [];
         for (_i = 0, _len = services.length; _i < _len; _i++) {
           service = services[_i];
-          _results.push(fn(service));
+          _results.push(regFn(service));
         }
         return _results;
       });
     } else {
-      this.subscriptions[subscriptionKey] = {
-        path: p,
-        fn: fn,
-        role: role
-      };
       return this.get(p, (function(_this) {
         return function(error, service) {
+          if (error) {
+            return log.error("" + _this.id + ": Error get: " + error.message);
+          }
           if (service) {
-            return fn(service);
+            return regFn(service);
           }
         };
       })(this));

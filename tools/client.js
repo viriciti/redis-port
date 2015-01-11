@@ -46,14 +46,18 @@ client.on("started", function() {
 				return;
 			}
 
-			client.query(role, function(data) {
-				if (data && data.port) {
-					say("New info on "+ role +". Got: ", data.port);
-					send("port", data.port);
-				} else {
-					say("GOT WRONG DATA!\n", data, "\n");
-				}
-			});
+			client.query(role,
+				function(data) {
+					if (data && data.port) {
+						say("New info on "+ role +". Got: ", data.port);
+						send("port", data.port);
+					} else {
+						say("GOT WRONG DATA!\n", data, "\n");
+					}
+				},
+				function(data) {
+					send("free", data);
+				});
 			say("Queried for "+ role);
 			send("queried");
 		} else if (msg.type && msg.type === "register") {
@@ -68,6 +72,13 @@ client.on("started", function() {
 				say("Registered to "+ host +":"+ port);
 				send("registered", port);
 			});
+		} else if (msg.type && msg.type === "stop") {
+			say("Closing down");
+			client.once("stopped", function() {
+				say("Stopped");
+				send("stopped");
+			});
+			client.stop()
 		}
 	});
 });
