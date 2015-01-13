@@ -26,6 +26,9 @@ class RedisPort extends EventEmitter
 	# @property [Number] Milliseconds to reset expire
 	ephemeralRefresh: 10000
 
+	# @property [Number] Check service timeout
+	checkRegisteredTimeout: 1000
+
 	# @property [String] Main prefix
 	prefix:           "redis-port"
 
@@ -40,6 +43,9 @@ class RedisPort extends EventEmitter
 
 	# @property [Object] Subscription registry
 	subscriptions:    null
+
+	# @property [Object] Subscription registry
+	registered:       null
 
 	# Constructor
 	#
@@ -79,6 +85,7 @@ class RedisPort extends EventEmitter
 
 		@ephemerals    = {}
 		@subscriptions = {}
+		@registered    = {}
 
 		@subscriber = redis.createClient @redisPort, @redisHost, retry_max_delay: 10000
 
@@ -110,7 +117,7 @@ class RedisPort extends EventEmitter
 
 					if pattern.length - 1 is pattern.indexOf "*"
 						serviceRole = channel.replace "__keyspace@0__:", ""
-						sub.freeFn? serviceRole.replace "#{@rootPath}/services/", ""
+						sub.freeFn? serviceRole.replace "#{@rootPath}/#{@servicesPath}/", ""
 					else
 						sub.freeFn? sub.role
 
@@ -128,6 +135,19 @@ class RedisPort extends EventEmitter
 		@client.on "error", (error) =>
 			log.warn "Redis client error: #{error.message}"
 			@emit "reconnect"
+
+		checkRegistration = =>
+			async.each Object.keys(@registered), ((role, cb) =>
+				service = @registered[role]
+				@getService role, (error, s) =>
+					return cb() if s
+					log.info "Service #{role} not found. Re-setting to #{service.host}:#{service.port}"
+					@set "#{@servicesPath}/#{role}", service, (error) =>
+						log.error "Set error: #{error.message}" if error
+			), (error) =>
+				@registerTimeout = setTimeout checkRegistration, @checkRegisteredTimeout
+		checkRegistration()
+
 
 	# Stop the client
 	#
@@ -266,7 +286,7 @@ class RedisPort extends EventEmitter
 
 			cb null, ks
 
-	# Register a service
+	# Register a service, and keep check the registration
 	#
 	# @param [String, Object] Role or object with role and port
 	# @param [Function] Callback function
@@ -284,8 +304,17 @@ class RedisPort extends EventEmitter
 			while not port? or port in ports
 				port = 10000 + Math.floor Math.random() * 55000
 
-			@set "services/#{role}", { host: @host, port: port, role: role }, (error, stat) =>
-				cb error, port
+			service =
+				host: @host
+				port: port
+				role: role
+
+			@set "#{@servicesPath}/#{role}", service, (error, stat) =>
+				return cb error if error
+
+				@registered[role] = service
+
+				cb null, port
 
 	# Free a service, simply deletes and emits a free event
 	#
@@ -295,10 +324,12 @@ class RedisPort extends EventEmitter
 	free: (role, cb) ->
 		log.debug "#{@id}: free", role
 
-		p = @_cleanPath "services/#{role}"
+		p = @_cleanPath "#{@servicesPath}/#{role}"
 
 		@get p, (error, service) =>
 			return cb? error if error
+
+			delete @registered[role]
 
 			@del p, (error) ->
 				cb? error, service
@@ -311,7 +342,7 @@ class RedisPort extends EventEmitter
 	query: (role, regFn, freeFn) ->
 		log.debug "#{@id}: query", role
 
-		p = @_cleanPath "services/#{role}"
+		p = @_cleanPath "#{@servicesPath}/#{role}"
 
 		subscriptionKey = "__keyspace@0__:#{p}"
 		@subscriber.psubscribe subscriptionKey
@@ -358,6 +389,13 @@ class RedisPort extends EventEmitter
 					cb()
 			), (error) =>
 				cb error, services
+
+	# Get service by role
+	#
+	#
+	getService: (role, cb) ->
+		@get "#{@servicesPath}/#{role}", cb
+
 
 	# Get the current active ports
 	#

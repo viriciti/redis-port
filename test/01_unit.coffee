@@ -436,3 +436,10 @@ describe "Unit", ->
 						), (error, ports) ->
 							throw error if error
 
+	describe "timeout", ->
+		it "bla", (done) ->
+			@timeout 400000
+
+			setTimeout ->
+				done()
+			, 300000
