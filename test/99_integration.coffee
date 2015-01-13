@@ -26,6 +26,11 @@ startClient = (name, cb) ->
 	client[name] = fork "tools/client.js", [name]
 	listenOnceTo name, "started", cb
 
+stopClient = (name, cb) ->
+	client[name].send
+		type: "stop"
+	listenOnceTo name, "stopped", cb
+
 registerClient = (role, cb) ->
 	send = role
 
@@ -52,6 +57,11 @@ listenToPort = (port, name, cb) ->
 		assert.equal p, port
 		cb()
 
+listenToFree = (role, name, cb) ->
+	listenOnceTo name, "free", (r) ->
+		assert.equal r, role
+		cb()
+
 printServices = (cb) ->
 	return cb unless reporter
 
@@ -70,18 +80,14 @@ describe "Integration", ->
 		before (done) ->
 			reporter = new RedisPort
 				redisHost: "localhost"
-				redisPort: 9090
+				redisPort: 6379
 				host:      "localhost"
 				project:   "project"
 				env:       "development"
 			reporter.on "started", done
 			reporter.start()
 
-		beforeEach (done) ->
-			setTimeout done, 200
-
 		after (done) ->
-			@timeout 10000
 			async.each Object.keys(client), ((name, cb) ->
 				client[name].on "exit", (code) ->
 					console.log "Client #{name}: Exitted."
@@ -96,9 +102,6 @@ describe "Integration", ->
 
 		afterEach (done) ->
 			printServices done
-
-		it "let's go! (initial timeout)", (done) ->
-			setTimeout done, 1000
 
 		it "start all clients", (done) ->
 			async.each clientNames, startClient, done
@@ -118,9 +121,7 @@ describe "Integration", ->
 				port: 20000
 			, (p) ->
 				assert.equal 20000, p
-				setTimeout ->
-					done()
-				, 1000
+				done()
 
 		it "re-register server #{service1} on 30000", (done) ->
 			registerClient
@@ -128,25 +129,16 @@ describe "Integration", ->
 				port: 30000
 			, (p) ->
 				assert.equal 30000, p
-				setTimeout ->
-					done()
-				, 1000
+				done()
 
 		it "re-register server #{service1} on 40000", (done) ->
-			@timeout 5000
+			async.each clientNames, listenToPort.bind(null, 40000), done
 
-			async.each clientNames, listenToPort.bind(null, 40000), ->
-				setTimeout ->
-					done()
-				, 1000
-
-			setTimeout ->
-				registerClient
-					role: service1
-					port: 40000
-				, (p) ->
-					assert.equal 40000, p
-			, 1000
+			registerClient
+				role: service1
+				port: 40000
+			, (p) ->
+				assert.equal 40000, p
 
 		it "start server #{service2}", (done) ->
 			startClient service2, done
@@ -168,29 +160,19 @@ describe "Integration", ->
 				port: 30000
 			, (p) ->
 				assert.equal 30000, p
-				setTimeout ->
-					done()
-				, 1000
+				done()
 
 		it "re-register server #{service2} on 54321", (done) ->
 			@timeout 5000
 
-			async.each clientNames, listenToPort.bind(null, 54321), ->
-				setTimeout ->
-					done()
-				, 1000
+			async.each clientNames, listenToPort.bind(null, 54321), done
 
-			setTimeout ->
-				registerClient
-					role: service1
-					port: 54321
-				, (p) ->
-					assert.equal 54321, p
-			, 1000
+			registerClient
+				role: service1
+				port: 54321
+			, (p) ->
+				assert.equal 54321, p
 
-		it "close, exit and remove #{service2}", (done) ->
-			client[service2].kill()
-			delete client[service2]
-			setTimeout ->
-				done()
-			, 500
+		it "all clients should emit the free event when #{service2} goes down", (done) ->
+			async.each clientNames, listenToFree.bind(null, service2), done
+			stopClient service2, ->

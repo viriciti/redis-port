@@ -8,6 +8,10 @@ timestamp = true if process.env.NODE_ENV is "production"
 
 module.exports = new winston.Logger
 	transports: [
-		new winston.transports.Console timestamp: timestamp, colorize: true, level: level
+		new winston.transports.Console
+			timestamp: timestamp
+			colorize:  true
+			level:     level
+			label:     "redis-port"
 	]
 

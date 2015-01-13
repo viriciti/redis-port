@@ -19,7 +19,8 @@ module.exports = new winston.Logger({
     new winston.transports.Console({
       timestamp: timestamp,
       colorize: true,
-      level: level
+      level: level,
+      label: "redis-port"
     })
   ]
 });
