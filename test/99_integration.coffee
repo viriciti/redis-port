@@ -173,6 +173,6 @@ describe "Integration", ->
 			, (p) ->
 				assert.equal 54321, p
 
-		it "all clients should emit the free event when #{service2} goes down", (done) ->
-			async.each clientNames, listenToFree.bind(null, service2), done
-			stopClient service2, ->
+		# it "all clients should emit the free event when #{service2} goes down", (done) ->
+		# 	async.each clientNames, listenToFree.bind(null, service2), done
+		# 	stopClient service2, ->
