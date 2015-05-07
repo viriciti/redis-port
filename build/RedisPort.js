@@ -1,7 +1,7 @@
-var EventEmitter, RedisPort, assert, async, log, path, redis, _,
-  __hasProp = {}.hasOwnProperty,
-  __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
-  __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
+var EventEmitter, RedisPort, _, assert, async, log, path, redis,
+  extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
+  hasProp = {}.hasOwnProperty,
+  indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
 
 _ = require("underscore");
 
@@ -17,8 +17,8 @@ EventEmitter = require("events").EventEmitter;
 
 log = require("./log");
 
-RedisPort = (function(_super) {
-  __extends(RedisPort, _super);
+RedisPort = (function(superClass) {
+  extend(RedisPort, superClass);
 
   RedisPort.prototype.client = null;
 
@@ -39,12 +39,12 @@ RedisPort = (function(_super) {
   RedisPort.prototype.subscriptions = null;
 
   function RedisPort(options, id) {
-    var attr, _i, _len, _ref;
+    var attr, i, len, ref;
     this.id = id;
     this.redisHost = options.redisHost, this.redisPort = options.redisPort, this.host = options.host, this.env = options.env, this.project = options.project;
-    _ref = ["redisHost", "redisPort", "env", "host", "project"];
-    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-      attr = _ref[_i];
+    ref = ["redisHost", "redisPort", "env", "host", "project"];
+    for (i = 0, len = ref.length; i < len; i++) {
+      attr = ref[i];
       assert(this[attr], "`" + attr + "` is required");
     }
     this.id || (this.id = Math.round(Math.random() * 10000));
@@ -55,7 +55,7 @@ RedisPort = (function(_super) {
   }
 
   RedisPort.prototype.start = function(cb) {
-    log.debug("" + this.id + ": connecting to " + this.redisHost + ":" + this.redisPort);
+    log.debug(this.id + ": connecting to " + this.redisHost + ":" + this.redisPort);
     this.ephemerals = {};
     this.subscriptions = {};
     this.subscriber = redis.createClient(this.redisPort, this.redisHost, {
@@ -64,12 +64,12 @@ RedisPort = (function(_super) {
     this.subscriber.on("pmessage", (function(_this) {
       return function(pattern, channel, key) {
         var serviceRole, sub;
-        log.debug("" + _this.id + ": pmessage", pattern, key);
+        log.debug(_this.id + ": pmessage", pattern, key);
         switch (key) {
           case "set":
             sub = _this.subscriptions[pattern];
             if (!sub) {
-              return log.debug("" + _this.id + ": no subscription for " + pattern);
+              return log.debug(_this.id + ": no subscription for " + pattern);
             }
             if (pattern.length - 1 === pattern.indexOf("*")) {
               serviceRole = channel.replace("__keyspace@0__:", "");
@@ -91,11 +91,11 @@ RedisPort = (function(_super) {
           case "del":
             sub = _this.subscriptions[pattern];
             if (!sub) {
-              return log.debug("" + _this.id + ": no subscription for " + pattern);
+              return log.debug(_this.id + ": no subscription for " + pattern);
             }
             if (pattern.length - 1 === pattern.indexOf("*")) {
               serviceRole = channel.replace("__keyspace@0__:", "");
-              return typeof sub.freeFn === "function" ? sub.freeFn(serviceRole.replace("" + _this.rootPath + "/services/", "")) : void 0;
+              return typeof sub.freeFn === "function" ? sub.freeFn(serviceRole.replace(_this.rootPath + "/services/", "")) : void 0;
             } else {
               return typeof sub.freeFn === "function" ? sub.freeFn(sub.role) : void 0;
             }
@@ -113,7 +113,7 @@ RedisPort = (function(_super) {
     });
     this.client.once("connect", (function(_this) {
       return function(error) {
-        log.debug("" + _this.id + ": Connected.");
+        log.debug(_this.id + ": Connected.");
         _this.emit("started");
         return typeof cb === "function" ? cb() : void 0;
       };
@@ -127,7 +127,7 @@ RedisPort = (function(_super) {
   };
 
   RedisPort.prototype.stop = function() {
-    log.debug("" + this.id + ": stopping");
+    log.debug(this.id + ": stopping");
     return async.each(Object.keys(this.ephemerals), ((function(_this) {
       return function(key, cb) {
         clearTimeout(_this.ephemerals[key]);
@@ -138,7 +138,7 @@ RedisPort = (function(_super) {
         _this.client.end();
         _this.subscriber.end();
         _this.emit("stopped");
-        return log.debug("" + _this.id + ": stopped");
+        return log.debug(_this.id + ": stopped");
       };
     })(this));
   };
@@ -146,7 +146,7 @@ RedisPort = (function(_super) {
   RedisPort.prototype.pset = function(p, data, cb) {
     p = this._cleanPath(p);
     return this.client.set(p, JSON.stringify(data), function(error, result) {
-      log.debug("" + this.id + ": set", p, result);
+      log.debug(this.id + ": set", p, result);
       return typeof cb === "function" ? cb(error) : void 0;
     });
   };
@@ -171,7 +171,7 @@ RedisPort = (function(_super) {
     p = this._cleanPath(p);
     return this.client.get(p, (function(_this) {
       return function(error, data) {
-        log.debug("" + _this.id + ": get", p);
+        log.debug(_this.id + ": get", p);
         return cb(error, JSON.parse(data));
       };
     })(this));
@@ -179,16 +179,16 @@ RedisPort = (function(_super) {
 
   RedisPort.prototype.del = function(p, cb) {
     p = this._cleanPath(p);
-    return this.client.keys("" + p + "*", (function(_this) {
+    return this.client.keys(p + "*", (function(_this) {
       return function(error, keys) {
-        log.debug("" + _this.id + ": keys", "" + p + "*", keys);
+        log.debug(_this.id + ": keys", p + "*", keys);
         if (error) {
           return typeof cb === "function" ? cb(error) : void 0;
         }
         return async.eachSeries(keys, (function(k, cb) {
           clearTimeout(_this.ephemerals[k]);
           return _this.client.del(k, function(error, result) {
-            log.debug("" + _this.id + ": del", k, result);
+            log.debug(_this.id + ": del", k, result);
             return cb(error);
           });
         }), function(error) {
@@ -216,13 +216,13 @@ RedisPort = (function(_super) {
     return this.client.psetex(p, this.ephemeralExpire, JSON.stringify(data), (function(_this) {
       return function(error, result) {
         var updateExpire;
-        log.debug("" + _this.id + ": setex", p, _this.ephemeralExpire);
+        log.debug(_this.id + ": setex", p, _this.ephemeralExpire);
         if (error) {
           return typeof cb === "function" ? cb(error) : void 0;
         }
         updateExpire = function() {
           return _this.client.pexpire(p, _this.ephemeralExpire, function(error, result) {
-            log.debug("" + _this.id + ": expire", p, result, _this.ephemeralRefresh);
+            log.debug(_this.id + ": expire", p, result, _this.ephemeralRefresh);
             if (error) {
               return log.error("Error setting expire on " + p + ": " + error.message);
             }
@@ -256,18 +256,18 @@ RedisPort = (function(_super) {
     if (p.length - 1 === p.indexOf("*")) {
       p = p.replace("*", "");
     }
-    log.debug("" + this.id + ": list", "" + p + "*");
-    return this.client.keys("" + p + "*", (function(_this) {
+    log.debug(this.id + ": list", p + "*");
+    return this.client.keys(p + "*", (function(_this) {
       return function(error, keys) {
-        var key, ks, _i, _len;
-        log.debug("" + _this.id + ": list keys", "" + p + "*", keys);
+        var i, key, ks, len;
+        log.debug(_this.id + ": list keys", p + "*", keys);
         if (error) {
           return cb(error);
         }
         ks = [];
-        for (_i = 0, _len = keys.length; _i < _len; _i++) {
-          key = keys[_i];
-          ks.push(key.replace("" + _this.rootPath + "/", ""));
+        for (i = 0, len = keys.length; i < len; i++) {
+          key = keys[i];
+          ks.push(key.replace(_this.rootPath + "/", ""));
         }
         return cb(null, ks);
       };
@@ -276,7 +276,7 @@ RedisPort = (function(_super) {
 
   RedisPort.prototype.register = function(role, cb) {
     var port;
-    log.debug("" + this.id + ": register", role);
+    log.debug(this.id + ": register", role);
     if (typeof role === 'object') {
       port = role.port;
       role = role.role;
@@ -286,10 +286,10 @@ RedisPort = (function(_super) {
         if (error) {
           return cb(error);
         }
-        while ((port == null) || __indexOf.call(ports, port) >= 0) {
+        while ((port == null) || indexOf.call(ports, port) >= 0) {
           port = 10000 + Math.floor(Math.random() * 55000);
         }
-        return _this.set("services/" + role, {
+        return _this.pset("services/" + role, {
           host: _this.host,
           port: port,
           role: role
@@ -302,7 +302,7 @@ RedisPort = (function(_super) {
 
   RedisPort.prototype.free = function(role, cb) {
     var p;
-    log.debug("" + this.id + ": free", role);
+    log.debug(this.id + ": free", role);
     p = this._cleanPath("services/" + role);
     return this.get(p, (function(_this) {
       return function(error, service) {
@@ -318,7 +318,7 @@ RedisPort = (function(_super) {
 
   RedisPort.prototype.query = function(role, regFn, freeFn) {
     var p, subscriptionKey;
-    log.debug("" + this.id + ": query", role);
+    log.debug(this.id + ": query", role);
     p = this._cleanPath("services/" + role);
     subscriptionKey = "__keyspace@0__:" + p;
     this.subscriber.psubscribe(subscriptionKey);
@@ -330,22 +330,22 @@ RedisPort = (function(_super) {
     };
     if (role.length - 1 === role.indexOf("*")) {
       return this.getServices(role, function(error, services) {
-        var service, _i, _len, _results;
+        var i, len, results, service;
         if (error) {
-          return log.error("" + this.id + ": Error get services: " + error.message);
+          return log.error(this.id + ": Error get services: " + error.message);
         }
-        _results = [];
-        for (_i = 0, _len = services.length; _i < _len; _i++) {
-          service = services[_i];
-          _results.push(regFn(service));
+        results = [];
+        for (i = 0, len = services.length; i < len; i++) {
+          service = services[i];
+          results.push(regFn(service));
         }
-        return _results;
+        return results;
       });
     } else {
       return this.get(p, (function(_this) {
         return function(error, service) {
           if (error) {
-            return log.error("" + _this.id + ": Error get: " + error.message);
+            return log.error(_this.id + ": Error get: " + error.message);
           }
           if (service) {
             return regFn(service);
@@ -365,7 +365,7 @@ RedisPort = (function(_super) {
     if (wildcard) {
       queryPath += "/" + wildcard;
     }
-    log.debug("" + this.id + ": get services", wildcard, queryPath);
+    log.debug(this.id + ": get services", wildcard, queryPath);
     return this.list(queryPath, (function(_this) {
       return function(error, roles) {
         var services;
@@ -389,7 +389,7 @@ RedisPort = (function(_super) {
   };
 
   RedisPort.prototype.getPorts = function(cb) {
-    log.debug("" + this.id + ": get ports");
+    log.debug(this.id + ": get ports");
     return this.getServices((function(_this) {
       return function(error, services) {
         var ports;
