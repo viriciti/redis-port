@@ -84,7 +84,11 @@ describe "Integration", ->
 				host:      "localhost"
 				project:   "project"
 				env:       "development"
-			reporter.on "started", done
+			reporter.on "started", ->
+				reporter.del "services", (error) ->
+					throw error if error
+					done()
+
 			reporter.start()
 
 		after (done) ->
@@ -96,8 +100,10 @@ describe "Integration", ->
 			), ->
 				setTimeout ->
 					printServices ->
-						reporter.stop()
-						done()
+						reporter.del "services", (error) ->
+							throw error if error
+							reporter.stop()
+							done()
 				, 200
 
 		afterEach (done) ->
