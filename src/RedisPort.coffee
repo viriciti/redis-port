@@ -284,7 +284,7 @@ class RedisPort extends EventEmitter
 			while not port? or port in ports
 				port = 10000 + Math.floor Math.random() * 55000
 
-			@set "services/#{role}", { host: @host, port: port, role: role }, (error, stat) =>
+			@pset "services/#{role}", { host: @host, port: port, role: role }, (error, stat) =>
 				cb error, port
 
 	# Free a service, simply deletes and emits a free event
