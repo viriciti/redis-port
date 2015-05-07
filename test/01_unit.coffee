@@ -178,7 +178,7 @@ describe "Unit", ->
 					done()
 
 		describe "delete", ->
-			it "should be deleted without an error an delete the timeout", (done) ->
+			it "should be deleted without an error and delete the timeout", (done) ->
 				setTimeout ->
 					client.del "some", (error) ->
 						throw error if error
