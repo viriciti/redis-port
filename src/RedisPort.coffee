@@ -311,7 +311,15 @@ class RedisPort extends EventEmitter
 	query: (role, regFn, freeFn) ->
 		log.debug "#{@id}: query", role
 
-		p = @_cleanPath "services/#{role}"
+		project = undefined
+		env     = undefined
+
+		if _.isObject role
+			project = role.project
+			env     = role.env
+			role    = role.role
+
+		p = @_cleanPath "services/#{role}", project, env
 
 		subscriptionKey = "__keyspace@0__:#{p}"
 		@subscriber.psubscribe subscriptionKey
@@ -382,8 +390,13 @@ class RedisPort extends EventEmitter
 	# @param [String] Relative or absolute path
 	# @return [String] Absolute path
 	#
-	_cleanPath: (p) ->
-		return p if 0 is p.indexOf @rootPath
-		resolvedPath = path.resolve @rootPath, p
+	_cleanPath: (p, project, env) ->
+		project or= @project
+		env     or= @env
+
+		rootPath = "/#{@prefix}/#{project}/#{env}"
+
+		return p if 0 is p.indexOf rootPath
+		path.resolve rootPath, p
 
 module.exports = RedisPort

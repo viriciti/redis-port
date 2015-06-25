@@ -1,6 +1,6 @@
 {
   "name": "redis-port",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Service registry and port assignment using Redis",
   "repository": {
     "type": "git",
@@ -8,7 +8,7 @@
   },
   "main": "index.js",
   "dependencies": {
-    "async": "^1.0.0",
+    "async": "^1.2.1",
     "hiredis": "^0.4.0",
     "redis": "^0.12.1",
     "underscore": "^1.8.3",
