@@ -317,9 +317,16 @@ RedisPort = (function(superClass) {
   };
 
   RedisPort.prototype.query = function(role, regFn, freeFn) {
-    var p, subscriptionKey;
+    var env, p, project, subscriptionKey;
     log.debug(this.id + ": query", role);
-    p = this._cleanPath("services/" + role);
+    project = void 0;
+    env = void 0;
+    if (_.isObject(role)) {
+      project = role.project;
+      env = role.env;
+      role = role.role;
+    }
+    p = this._cleanPath("services/" + role, project, env);
     subscriptionKey = "__keyspace@0__:" + p;
     this.subscriber.psubscribe(subscriptionKey);
     this.subscriptions[subscriptionKey] = {
@@ -406,12 +413,15 @@ RedisPort = (function(superClass) {
     })(this));
   };
 
-  RedisPort.prototype._cleanPath = function(p) {
-    var resolvedPath;
-    if (0 === p.indexOf(this.rootPath)) {
+  RedisPort.prototype._cleanPath = function(p, project, env) {
+    var rootPath;
+    project || (project = this.project);
+    env || (env = this.env);
+    rootPath = "/" + this.prefix + "/" + project + "/" + env;
+    if (0 === p.indexOf(rootPath)) {
       return p;
     }
-    return resolvedPath = path.resolve(this.rootPath, p);
+    return path.resolve(rootPath, p);
   };
 
   return RedisPort;
