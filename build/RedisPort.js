@@ -312,10 +312,16 @@ RedisPort = (function(superClass) {
     })(this));
   };
 
-  RedisPort.prototype.register = function(role, cb) {
-    var port;
+  RedisPort.prototype.register = function(role, forcePort, cb) {
+    var host, port;
     log.debug(this.id + ": register", role);
+    if (!cb) {
+      cb = forcePort;
+      forcePort = false;
+    }
+    host = this.host;
     if (typeof role === 'object') {
+      host = role.host || host;
       port = role.port;
       role = role.role;
     }
@@ -324,8 +330,10 @@ RedisPort = (function(superClass) {
         if (error) {
           return cb(error);
         }
-        while ((port == null) || indexOf.call(ports, port) >= 0) {
-          port = 10000 + Math.floor(Math.random() * 55000);
+        if (forcePort) {
+          while ((port == null) || indexOf.call(ports, port) >= 0) {
+            port = 10000 + Math.floor(Math.random() * 55000);
+          }
         }
         return _this.pset("services/" + role, {
           host: _this.host,

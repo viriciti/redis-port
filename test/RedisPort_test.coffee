@@ -1,3 +1,4 @@
+_      = require "underscore"
 async  = require "async"
 assert = require "assert"
 
@@ -287,6 +288,23 @@ describe "Unit", ->
 						assert port in ports
 						assert not (port in services.map (s) -> s.port)
 						done()
+
+			it "should register a service by object", (done) ->
+				client.register
+					role: "queue1"
+					host: "natje",
+					port: 6379
+				, (error, port) ->
+					throw error if error
+
+					client.register
+						role: "queue2"
+						host: "natje",
+						port: 6379
+					, (error, port) ->
+						client.getServices (error, list) ->
+							assert.equal 2, (_.filter list, (s) -> s.port is 6379).length
+							done()
 
 			it "should be listed with a wildcard", (done) ->
 				client.getServices "some", (error, services) ->
