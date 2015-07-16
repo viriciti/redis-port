@@ -337,7 +337,7 @@ class RedisPort extends EventEmitter
 		@getPorts (error, ports) =>
 			return cb error if error
 
-			if forcePort
+			unless forcePort
 				while not port? or port in ports
 					port = 10000 + Math.floor Math.random() * 55000
 

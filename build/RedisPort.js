@@ -330,7 +330,7 @@ RedisPort = (function(superClass) {
         if (error) {
           return cb(error);
         }
-        if (forcePort) {
+        if (!forcePort) {
           while ((port == null) || indexOf.call(ports, port) >= 0) {
             port = 10000 + Math.floor(Math.random() * 55000);
           }
