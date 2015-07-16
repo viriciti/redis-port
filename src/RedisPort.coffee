@@ -41,6 +41,12 @@ class RedisPort extends EventEmitter
 	# @property [Object] Subscription registry
 	subscriptions:    null
 
+	# @property [Sting] Queue name
+	queueName:        null
+
+	# @property [Sting] Max queue length
+	queueMaxLength:   null
+
 	# Constructor
 	#
 	# @param options [Object] Main options
@@ -143,6 +149,57 @@ class RedisPort extends EventEmitter
 
 			@emit "stopped"
 			log.debug "#{@id}: stopped"
+
+	# Sets the current queue name
+	#
+	# @param [String] Queue name
+	#
+	setQueueName: (name) ->
+		@queueName = @_cleanPath "queues/#{name}"
+
+	# Sets the current queue name
+	#
+	# @param [Function] Callback function
+	#
+	clearQueue: (cb) ->
+		return cb new Error "No queue name defined" unless @queueName
+		@client.del @queueName, cb
+
+	# Gets the current queue length
+	#
+	# @param [Function] Callback function
+	#
+	queueLength: (cb) ->
+		return cb new Error "No queue name defined" unless @queueName
+		@client.llen @queueName, cb
+
+	# Add to the queue
+	#
+	# @param [String] Queue name
+	# @param [Function] Callback function
+	#
+	enqueue: (msg, cb) ->
+		return cb new Error "No queue name defined" unless @queueName
+
+		@client.rpush @queueName, JSON.stringify(msg), (error, len) =>
+			return cb error, len unless @queueMaxLength
+
+			return cb error, len unless len > @queueMaxLength
+
+			@client.ltrim [@queueName, len - @queueMaxLength, -1], (error) ->
+				cb error, len
+
+	# Get from the queue
+	# This is blocking lpop, guarenteed to return a msg
+	# Use only one instance of RedisPort for this
+	#
+	# @param [Function] Callback function
+	#
+	dequeue: (cb) ->
+		return cb new Error "No queue name defined" unless @queueName
+
+		@client.blpop @queueName, 0, (error, msg) ->
+			cb error, msg[1]
 
 	# Persistantly set a key-value
 	#

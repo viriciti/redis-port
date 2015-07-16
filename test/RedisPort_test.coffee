@@ -436,3 +436,78 @@ describe "Unit", ->
 						), (error, ports) ->
 							throw error if error
 
+	describe 'queues', ->
+		listName = "testlist"
+
+		beforeEach (done) ->
+			rpc.setQueueName "testlist"
+			rpc.clearQueue (error) ->
+				throw error if error
+				done()
+
+		afterEach (done) ->
+			rpc.clearQueue (error) ->
+				throw error if error
+				done()
+
+		describe "size", ->
+			it 'should return the initial length of the redis enqueue which is zero', (done) ->
+				rpc.queueLength (err, size) ->
+					assert.equal size, 0
+					done()
+
+		describe 'enqueue', ->
+			it 'should enqueue 10 items and return length of 10', (done) ->
+				enqueue 10, db, -> done()
+
+			it 'should enqueue 10 items in expected order', (done) ->
+				async.eachSeries [0..10], ((i, cb) ->
+					rpc.enqueue {i: i, c: i}, cb
+				), ->
+					rpc.client.lrange "queues/queueName", 0, 10, (error, arr) ->
+						assert.equal "#{arr.join(",")}", '{"i":0,"c":0},{"i":1,"c":1},{"i":2,"c":2},{"i":3,"c":3},{"i":4,"c":4},{"i":5,"c":5},{"i":6,"c":6},{"i":7,"c":7},{"i":8,"c":8},{"i":9,"c":9},{"i":10,"c":10}'
+						done()
+
+			it 'should enqueue 10 items and dequeue in expected order', (done) ->
+				async.eachSeries [0..20], ((i, cb) ->
+					rpc.enqueue {i: i, c: i}, cb
+				), ->
+					arr = []
+					async.eachSeries [0..10], ((i, cb) ->
+						rpc.dequeue (error, msg) ->
+							arr.push msg
+							cb()
+					), ->
+						assert.equal "#{arr.join(",")}", '{"i":0,"c":0},{"i":1,"c":1},{"i":2,"c":2},{"i":3,"c":3},{"i":4,"c":4},{"i":5,"c":5},{"i":6,"c":6},{"i":7,"c":7},{"i":8,"c":8},{"i":9,"c":9},{"i":10,"c":10}'
+						done()
+
+			# it 'should enqueue 100 items and return length of 100', (done) ->
+			# 	enqueue 100, db, -> done()
+
+		# describe 'dequeue', ->
+		# 	it 'should enqueue and dequeue 10 items and return length of 0', (done) ->
+		# 		enqueue 10, db, -> dequeue 10, db, -> done()
+
+		# 	it 'should enqueue and dequeue 100 items and return length of 0', (done) ->
+		# 		enqueue 100, db, -> dequeue 100, db, -> done()
+
+		# 	it 'should wait for blocking thingy', (done) ->
+		# 		db.dequeue (error, msg) ->
+
+		# 			assert msg
+		# 			done()
+
+		# 		db2.enqueue {test: "test123"}, ->
+
+		# describe 'maxlength', ->
+		# 	it 'should not go over max length', (done) ->
+		# 		db = new Database
+		# 			queue: 'test'
+		# 			max:   100
+
+		# 		db.start (error) ->
+
+		# 			enqueue 100, db, ->
+		# 				db.enqueue {too: 'much'}, (error, len) ->
+		# 					assert 100, len
+		# 					done()
