@@ -289,21 +289,40 @@ describe "Unit", ->
 						assert not (port in services.map (s) -> s.port)
 						done()
 
-			it "should register a service by object", (done) ->
+			it "should register a service by object twice - no force port", (done) ->
 				client.register
 					role: "queue1"
 					host: "natje",
-					port: 6379
+					port: 5000
 				, (error, port) ->
 					throw error if error
 
 					client.register
 						role: "queue2"
 						host: "natje",
-						port: 6379
+						port: 5000
 					, (error, port) ->
 						client.getServices (error, list) ->
-							assert.equal 2, (_.filter list, (s) -> s.port is 6379).length
+							assert.equal 1, (_.filter list, (s) -> s.port is 5000).length
+							done()
+
+			it "should register a service by object twice - with force port", (done) ->
+				client.register
+					role: "queue1"
+					host: "natje",
+					port: 5001
+				, true
+				, (error, port) ->
+					throw error if error
+
+					client.register
+						role: "queue2"
+						host: "natje",
+						port: 5001
+					, true
+					, (error, port) ->
+						client.getServices (error, list) ->
+							assert.equal 2, (_.filter list, (s) -> s.port is 5001).length
 							done()
 
 			it "should be listed with a wildcard", (done) ->
@@ -504,8 +523,7 @@ describe "Unit", ->
 				async.eachSeries [0..10], ((i, cb) ->
 					rpc.enqueue queue, JSON.stringify({i: i, c: i}), cb
 				), ->
-					path = rpc._cleanPath("queues/#{queue}")
-					console.log path
+					path = rpc._cleanPath "queues/#{queue}"
 
 					rpc.client.lrange rpc._cleanPath("queues/#{queue}"), 0, 10, (error, arr) ->
 						assert.equal "#{arr.join(",")}", '{"i":0,"c":0},{"i":1,"c":1},{"i":2,"c":2},{"i":3,"c":3},{"i":4,"c":4},{"i":5,"c":5},{"i":6,"c":6},{"i":7,"c":7},{"i":8,"c":8},{"i":9,"c":9},{"i":10,"c":10}'
