@@ -41,6 +41,15 @@ class RedisPort extends EventEmitter
 	# @property [Object] Subscription registry
 	subscriptions:    null
 
+	# @property [Sting] Queue prefix
+	queuePath:        "queue"
+
+	# @property [Sting] Queue prefix
+	queueRootPath:    null
+
+	# @property [Sting] Max queue length
+	queueMaxLength:   null
+
 	# Constructor
 	#
 	# @param options [Object] Main options
@@ -68,7 +77,8 @@ class RedisPort extends EventEmitter
 		@ephemeralRefresh = options.ephemeralRefresh or @ephemeralRefresh
 		@prefix           = options.prefix           or @prefix
 
-		@rootPath = "/#{@prefix}/#{@project}/#{@env}"
+		@rootPath      = "/#{@prefix}/#{@project}/#{@env}"
+		@queueRootPath = @_cleanPath "queues"
 
 	# Start function with callback
 	#
@@ -131,7 +141,7 @@ class RedisPort extends EventEmitter
 
 	# Stop the client
 	#
-	stop: ->
+	stop: (cb) ->
 		log.debug "#{@id}: stopping"
 
 		async.each (Object.keys @ephemerals), ((key, cb) =>
@@ -143,6 +153,45 @@ class RedisPort extends EventEmitter
 
 			@emit "stopped"
 			log.debug "#{@id}: stopped"
+
+			cb?()
+
+	# Sets the current queue name
+	#
+	# @param [Function] Callback function
+	#
+	clearQueue: (queue, cb) ->
+		@client.del "#{@queueRootPath}/#{queue}", cb
+
+	# Gets the current queue length
+	#
+	# @param [Function] Callback function
+	#
+	queueLength: (queue, cb) ->
+		@client.llen "#{@queueRootPath}/#{queue}", cb
+
+	# Add to the queue
+	#
+	# @param [String] Queue name
+	# @param [Function] Callback function
+	#
+	enqueue: (queue, msg, cb) ->
+		@client.rpush "#{@queueRootPath}/#{queue}", msg, (error, len) =>
+			return cb error, len unless @queueMaxLength
+			return cb error, len unless len > @queueMaxLength
+
+			@client.ltrim ["#{@queueRootPath}/#{queue}", 1 + len - @queueMaxLength, -1], (error) ->
+				cb error, len
+
+	# Get from the queue
+	# This is blocking lpop, guarenteed to return a msg
+	# Use only one instance of RedisPort for this
+	#
+	# @param [Function] Callback function
+	#
+	dequeue: (queue, cb) ->
+		@client.blpop "#{@queueRootPath}/#{queue}", 0, (error, msg) ->
+			cb error, msg[1]
 
 	# Persistantly set a key-value
 	#
