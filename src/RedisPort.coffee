@@ -318,20 +318,28 @@ class RedisPort extends EventEmitter
 	# Register a service
 	#
 	# @param [String, Object] Role or object with role and port
-	# @param [Function] Callback function
+	# @param Boolean          Force the given port and disable port checking
+	# @param [Function]       Callback function
 	#
-	register: (role, cb) ->
+	register: (role, forcePort, cb) ->
 		log.debug "#{@id}: register", role
 
+		unless cb
+			cb        = forcePort
+			forcePort = false
+
+		host = @host
 		if typeof role is 'object'
+			host = role.host or host
 			port = role.port
 			role = role.role
 
 		@getPorts (error, ports) =>
 			return cb error if error
 
-			while not port? or port in ports
-				port = 10000 + Math.floor Math.random() * 55000
+			if forcePort
+				while not port? or port in ports
+					port = 10000 + Math.floor Math.random() * 55000
 
 			@pset "services/#{role}", { host: @host, port: port, role: role }, (error, stat) =>
 				cb error, port
