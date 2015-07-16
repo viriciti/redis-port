@@ -38,12 +38,18 @@ RedisPort = (function(superClass) {
 
   RedisPort.prototype.subscriptions = null;
 
+  RedisPort.prototype.queuePath = "queue";
+
+  RedisPort.prototype.queueRootPath = null;
+
+  RedisPort.prototype.queueMaxLength = null;
+
   function RedisPort(options, id) {
-    var attr, i, len, ref;
+    var attr, i, len1, ref;
     this.id = id;
     this.redisHost = options.redisHost, this.redisPort = options.redisPort, this.host = options.host, this.env = options.env, this.project = options.project;
     ref = ["redisHost", "redisPort", "env", "host", "project"];
-    for (i = 0, len = ref.length; i < len; i++) {
+    for (i = 0, len1 = ref.length; i < len1; i++) {
       attr = ref[i];
       assert(this[attr], "`" + attr + "` is required");
     }
@@ -52,6 +58,7 @@ RedisPort = (function(superClass) {
     this.ephemeralRefresh = options.ephemeralRefresh || this.ephemeralRefresh;
     this.prefix = options.prefix || this.prefix;
     this.rootPath = "/" + this.prefix + "/" + this.project + "/" + this.env;
+    this.queueRootPath = this._cleanPath("queues");
   }
 
   RedisPort.prototype.start = function(cb) {
@@ -126,7 +133,7 @@ RedisPort = (function(superClass) {
     })(this));
   };
 
-  RedisPort.prototype.stop = function() {
+  RedisPort.prototype.stop = function(cb) {
     log.debug(this.id + ": stopping");
     return async.each(Object.keys(this.ephemerals), ((function(_this) {
       return function(key, cb) {
@@ -138,9 +145,40 @@ RedisPort = (function(superClass) {
         _this.client.end();
         _this.subscriber.end();
         _this.emit("stopped");
-        return log.debug(_this.id + ": stopped");
+        log.debug(_this.id + ": stopped");
+        return typeof cb === "function" ? cb() : void 0;
       };
     })(this));
+  };
+
+  RedisPort.prototype.clearQueue = function(queue, cb) {
+    return this.client.del(this.queueRootPath + "/" + queue, cb);
+  };
+
+  RedisPort.prototype.queueLength = function(queue, cb) {
+    return this.client.llen(this.queueRootPath + "/" + queue, cb);
+  };
+
+  RedisPort.prototype.enqueue = function(queue, msg, cb) {
+    return this.client.rpush(this.queueRootPath + "/" + queue, msg, (function(_this) {
+      return function(error, len) {
+        if (!_this.queueMaxLength) {
+          return cb(error, len);
+        }
+        if (!(len > _this.queueMaxLength)) {
+          return cb(error, len);
+        }
+        return _this.client.ltrim([_this.queueRootPath + "/" + queue, 1 + len - _this.queueMaxLength, -1], function(error) {
+          return cb(error, len);
+        });
+      };
+    })(this));
+  };
+
+  RedisPort.prototype.dequeue = function(queue, cb) {
+    return this.client.blpop(this.queueRootPath + "/" + queue, 0, function(error, msg) {
+      return cb(error, msg[1]);
+    });
   };
 
   RedisPort.prototype.pset = function(p, data, cb) {
@@ -259,13 +297,13 @@ RedisPort = (function(superClass) {
     log.debug(this.id + ": list", p + "*");
     return this.client.keys(p + "*", (function(_this) {
       return function(error, keys) {
-        var i, key, ks, len;
+        var i, key, ks, len1;
         log.debug(_this.id + ": list keys", p + "*", keys);
         if (error) {
           return cb(error);
         }
         ks = [];
-        for (i = 0, len = keys.length; i < len; i++) {
+        for (i = 0, len1 = keys.length; i < len1; i++) {
           key = keys[i];
           ks.push(key.replace(_this.rootPath + "/", ""));
         }
@@ -337,12 +375,12 @@ RedisPort = (function(superClass) {
     };
     if (role.length - 1 === role.indexOf("*")) {
       return this.getServices(role, function(error, services) {
-        var i, len, results, service;
+        var i, len1, results, service;
         if (error) {
           return log.error(this.id + ": Error get services: " + error.message);
         }
         results = [];
-        for (i = 0, len = services.length; i < len; i++) {
+        for (i = 0, len1 = services.length; i < len1; i++) {
           service = services[i];
           results.push(regFn(service));
         }
