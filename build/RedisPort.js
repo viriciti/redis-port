@@ -160,7 +160,7 @@ RedisPort = (function(superClass) {
   };
 
   RedisPort.prototype.enqueue = function(queue, msg, cb) {
-    return this.client.rpush(this.queueRootPath + "/" + queue, msg, (function(_this) {
+    return this.client.lpush(this.queueRootPath + "/" + queue, msg, (function(_this) {
       return function(error, len) {
         if (!_this.queueMaxLength) {
           return cb(error, len);
@@ -168,7 +168,7 @@ RedisPort = (function(superClass) {
         if (!(len > _this.queueMaxLength)) {
           return cb(error, len);
         }
-        return _this.client.ltrim([_this.queueRootPath + "/" + queue, 1 + len - _this.queueMaxLength, -1], function(error) {
+        return _this.client.ltrim([_this.queueRootPath + "/" + queue, 0, _this.queueMaxLength - 2], function(error) {
           return cb(error, len);
         });
       };
@@ -176,7 +176,7 @@ RedisPort = (function(superClass) {
   };
 
   RedisPort.prototype.dequeue = function(queue, cb) {
-    return this.client.blpop(this.queueRootPath + "/" + queue, 0, function(error, msg) {
+    return this.client.brpop(this.queueRootPath + "/" + queue, 0, function(error, msg) {
       return cb(error, msg[1]);
     });
   };

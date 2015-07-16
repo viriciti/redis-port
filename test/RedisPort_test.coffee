@@ -484,7 +484,6 @@ describe "Unit", ->
 		queue = "testlist"
 		rpc   = null
 
-
 		beforeEach (done) ->
 			newClient "nice-project-1", "client1", (c) ->
 				rpc = c
@@ -526,7 +525,7 @@ describe "Unit", ->
 					path = rpc._cleanPath "queues/#{queue}"
 
 					rpc.client.lrange rpc._cleanPath("queues/#{queue}"), 0, 10, (error, arr) ->
-						assert.equal "#{arr.join(",")}", '{"i":0,"c":0},{"i":1,"c":1},{"i":2,"c":2},{"i":3,"c":3},{"i":4,"c":4},{"i":5,"c":5},{"i":6,"c":6},{"i":7,"c":7},{"i":8,"c":8},{"i":9,"c":9},{"i":10,"c":10}'
+						assert.equal "#{arr.join(",")}", '{"i":10,"c":10},{"i":9,"c":9},{"i":8,"c":8},{"i":7,"c":7},{"i":6,"c":6},{"i":5,"c":5},{"i":4,"c":4},{"i":3,"c":3},{"i":2,"c":2},{"i":1,"c":1},{"i":0,"c":0}'
 						done()
 
 			it 'should enqueue 10 items and dequeue in expected order', (done) ->
@@ -560,11 +559,11 @@ describe "Unit", ->
 					assert.equal amount, llen
 
 					async.eachSeries [1..amount], (i, cb) ->
-							rpc.dequeue queue, (err, msg) ->
-								throw err if err
-								llen--
-								cb()
-					, () ->
+						rpc.dequeue queue, (err, msg) ->
+							throw err if err
+							llen--
+							cb()
+					, ->
 						assert.equal llen, 0
 						done()
 
@@ -576,17 +575,26 @@ describe "Unit", ->
 				llen = 0
 
 				async.eachSeries [1..1000], (i, cb) ->
-					rpc.enqueue queue, JSON.stringify({ha: "sdfsdsdfsdf", d: "sdfsdfsdfsdfsdf", t: 12321321354}), (error, l) ->
+					rpc.enqueue queue, JSON.stringify({ha: "sdfsdsdfsdf", d: "sdfsdfsdfsdfsdf", t: 1000000 + i}), (error, l) ->
 						throw error if error
 						llen = l
 						cb()
 				, (error) ->
 					throw error if error
 
-					setTimeout ->
-						assert.equal llen, 10
+					assert.equal llen, 10
+
+					msg = null
+					async.eachSeries [1..10], (i, cb) ->
+						rpc.dequeue queue, (err, m) ->
+							throw err if err
+							llen--
+							msg = m
+							cb()
+					, ->
+						assert.equal llen, 0
+						assert.equal 1001000, JSON.parse(msg).t
 						done()
-					, 2000
 
 
 

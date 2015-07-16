@@ -176,11 +176,11 @@ class RedisPort extends EventEmitter
 	# @param [Function] Callback function
 	#
 	enqueue: (queue, msg, cb) ->
-		@client.rpush "#{@queueRootPath}/#{queue}", msg, (error, len) =>
+		@client.lpush "#{@queueRootPath}/#{queue}", msg, (error, len) =>
 			return cb error, len unless @queueMaxLength
 			return cb error, len unless len > @queueMaxLength
 
-			@client.ltrim ["#{@queueRootPath}/#{queue}", 1 + len - @queueMaxLength, -1], (error) ->
+			@client.ltrim ["#{@queueRootPath}/#{queue}", 0, @queueMaxLength - 2], (error) ->
 				cb error, len
 
 	# Get from the queue
@@ -190,7 +190,7 @@ class RedisPort extends EventEmitter
 	# @param [Function] Callback function
 	#
 	dequeue: (queue, cb) ->
-		@client.blpop "#{@queueRootPath}/#{queue}", 0, (error, msg) ->
+		@client.brpop "#{@queueRootPath}/#{queue}", 0, (error, msg) ->
 			cb error, msg[1]
 
 	# Persistantly set a key-value
