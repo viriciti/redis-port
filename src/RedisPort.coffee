@@ -41,8 +41,11 @@ class RedisPort extends EventEmitter
 	# @property [Object] Subscription registry
 	subscriptions:    null
 
-	# @property [Sting] Queue name
-	queueName:        null
+	# @property [Sting] Queue prefix
+	queuePath:        "queue"
+
+	# @property [Sting] Queue prefix
+	queueRootPath:    null
 
 	# @property [Sting] Max queue length
 	queueMaxLength:   null
@@ -74,7 +77,8 @@ class RedisPort extends EventEmitter
 		@ephemeralRefresh = options.ephemeralRefresh or @ephemeralRefresh
 		@prefix           = options.prefix           or @prefix
 
-		@rootPath = "/#{@prefix}/#{@project}/#{@env}"
+		@rootPath      = "/#{@prefix}/#{@project}/#{@env}"
+		@queueRootPath = @_cleanPath "queues"
 
 	# Start function with callback
 	#
@@ -137,7 +141,7 @@ class RedisPort extends EventEmitter
 
 	# Stop the client
 	#
-	stop: ->
+	stop: (cb) ->
 		log.debug "#{@id}: stopping"
 
 		async.each (Object.keys @ephemerals), ((key, cb) =>
@@ -150,43 +154,33 @@ class RedisPort extends EventEmitter
 			@emit "stopped"
 			log.debug "#{@id}: stopped"
 
-	# Sets the current queue name
-	#
-	# @param [String] Queue name
-	#
-	setQueueName: (name) ->
-		@queueName = @_cleanPath "queues/#{name}"
+			cb?()
 
 	# Sets the current queue name
 	#
 	# @param [Function] Callback function
 	#
-	clearQueue: (cb) ->
-		return cb new Error "No queue name defined" unless @queueName
-		@client.del @queueName, cb
+	clearQueue: (queue, cb) ->
+		@client.del "#{@queueRootPath}/#{queue}", cb
 
 	# Gets the current queue length
 	#
 	# @param [Function] Callback function
 	#
-	queueLength: (cb) ->
-		return cb new Error "No queue name defined" unless @queueName
-		@client.llen @queueName, cb
+	queueLength: (queue, cb) ->
+		@client.llen "#{@queueRootPath}/#{queue}", cb
 
 	# Add to the queue
 	#
 	# @param [String] Queue name
 	# @param [Function] Callback function
 	#
-	enqueue: (msg, cb) ->
-		return cb new Error "No queue name defined" unless @queueName
-
-		@client.rpush @queueName, JSON.stringify(msg), (error, len) =>
+	enqueue: (queue, msg, cb) ->
+		@client.rpush "#{@queueRootPath}/#{queue}", msg, (error, len) =>
 			return cb error, len unless @queueMaxLength
-
 			return cb error, len unless len > @queueMaxLength
 
-			@client.ltrim [@queueName, len - @queueMaxLength, -1], (error) ->
+			@client.ltrim ["#{@queueRootPath}/#{queue}", 1 + len - @queueMaxLength, -1], (error) ->
 				cb error, len
 
 	# Get from the queue
@@ -195,10 +189,8 @@ class RedisPort extends EventEmitter
 	#
 	# @param [Function] Callback function
 	#
-	dequeue: (cb) ->
-		return cb new Error "No queue name defined" unless @queueName
-
-		@client.blpop @queueName, 0, (error, msg) ->
+	dequeue: (queue, cb) ->
+		@client.blpop "#{@queueRootPath}/#{queue}", 0, (error, msg) ->
 			cb error, msg[1]
 
 	# Persistantly set a key-value

@@ -402,7 +402,8 @@ describe "Unit", ->
 					clientA.query "spawner*", (service) ->
 						assert service
 						assert.equal "spawner-hy_001-raw", service.role
-						done()
+						clientA.stop ->
+							done()
 
 					clientB.register "spawner-hy_001-raw", (error, port) ->
 						throw error if error
@@ -416,7 +417,7 @@ describe "Unit", ->
 				vids = ["yoy_001", "yoy_002", "yoy_003"]
 
 				count = 0
-				onRegister1 = ->
+				onRegister1 = (p) ->
 					done() if ++count is 3
 
 				onRegister2 = ->
@@ -425,89 +426,131 @@ describe "Unit", ->
 				newClient "nice-project-1", "client1", (c) ->
 					client1 = c
 
-					newClient "nice-project-2", "client2", (c) ->
-						client2 = c
+					client1.getServices (error, list) ->
+						throw error if error
 
-						client1.query "#{wildcard}*", onRegister1
-						client2.query "#{wildcard}*", onRegister2
-
-						async.map vids, ((vid, cb) ->
-							client1.register "#{wildcard}-#{vid}-raw", cb
-						), (error, ports) ->
+						client1.del "services", (error) ->
 							throw error if error
 
+							newClient "nice-project-2", "client2", (c) ->
+								client2 = c
+
+								client1.query "#{wildcard}*", onRegister1
+								client2.query "#{wildcard}*", onRegister2
+
+								async.map vids, ((vid, cb) ->
+									client1.register "#{wildcard}-#{vid}-raw", cb
+								), (error, ports) ->
+									throw error if error
+
 	describe 'queues', ->
-		listName = "testlist"
+		queue = "testlist"
+		rpc   = null
+
 
 		beforeEach (done) ->
-			rpc.setQueueName "testlist"
-			rpc.clearQueue (error) ->
-				throw error if error
-				done()
+			newClient "nice-project-1", "client1", (c) ->
+				rpc = c
+
+				rpc.clearQueue queue, (error) ->
+					throw error if error
+					done()
 
 		afterEach (done) ->
-			rpc.clearQueue (error) ->
+			rpc.clearQueue queue, (error) ->
 				throw error if error
 				done()
 
 		describe "size", ->
 			it 'should return the initial length of the redis enqueue which is zero', (done) ->
-				rpc.queueLength (err, size) ->
+				rpc.queueLength queue, (err, size) ->
 					assert.equal size, 0
 					done()
 
 		describe 'enqueue', ->
 			it 'should enqueue 10 items and return length of 10', (done) ->
-				enqueue 10, db, -> done()
+				llen = 0
+				async.eachSeries [1..10], (i, cb) ->
+					rpc.enqueue queue, "sasads", (error, l) ->
+						throw error if error
+						llen = l
+						cb()
+				, (error) ->
+					throw error if error
+
+					assert.equal 10, llen
+
+					done()
 
 			it 'should enqueue 10 items in expected order', (done) ->
 				async.eachSeries [0..10], ((i, cb) ->
-					rpc.enqueue {i: i, c: i}, cb
+					rpc.enqueue queue, JSON.stringify({i: i, c: i}), cb
 				), ->
-					rpc.client.lrange "queues/queueName", 0, 10, (error, arr) ->
+					path = rpc._cleanPath("queues/#{queue}")
+					console.log path
+
+					rpc.client.lrange rpc._cleanPath("queues/#{queue}"), 0, 10, (error, arr) ->
 						assert.equal "#{arr.join(",")}", '{"i":0,"c":0},{"i":1,"c":1},{"i":2,"c":2},{"i":3,"c":3},{"i":4,"c":4},{"i":5,"c":5},{"i":6,"c":6},{"i":7,"c":7},{"i":8,"c":8},{"i":9,"c":9},{"i":10,"c":10}'
 						done()
 
 			it 'should enqueue 10 items and dequeue in expected order', (done) ->
 				async.eachSeries [0..20], ((i, cb) ->
-					rpc.enqueue {i: i, c: i}, cb
+					rpc.enqueue queue, JSON.stringify({i: i, c: i}), cb
 				), ->
 					arr = []
 					async.eachSeries [0..10], ((i, cb) ->
-						rpc.dequeue (error, msg) ->
+						rpc.dequeue queue, (error, msg) ->
 							arr.push msg
 							cb()
 					), ->
 						assert.equal "#{arr.join(",")}", '{"i":0,"c":0},{"i":1,"c":1},{"i":2,"c":2},{"i":3,"c":3},{"i":4,"c":4},{"i":5,"c":5},{"i":6,"c":6},{"i":7,"c":7},{"i":8,"c":8},{"i":9,"c":9},{"i":10,"c":10}'
 						done()
 
-			# it 'should enqueue 100 items and return length of 100', (done) ->
-			# 	enqueue 100, db, -> done()
+		describe 'dequeue', ->
+			it 'should enqueue and dequeue 10 items and return length of 0', (done) ->
+				@timeout 10000
 
-		# describe 'dequeue', ->
-		# 	it 'should enqueue and dequeue 10 items and return length of 0', (done) ->
-		# 		enqueue 10, db, -> dequeue 10, db, -> done()
+				llen   = 0
+				amount = 1000
 
-		# 	it 'should enqueue and dequeue 100 items and return length of 0', (done) ->
-		# 		enqueue 100, db, -> dequeue 100, db, -> done()
+				async.eachSeries [1..amount], (i, cb) ->
+					rpc.enqueue queue, JSON.stringify({ha: "sdfsdsdfsdf", d: "sdfsdfsdfsdfsdf", t: 12321321354}), (error, l) ->
+						throw error if error
+						llen = l
+						cb()
+				, (error) ->
+					throw error if error
 
-		# 	it 'should wait for blocking thingy', (done) ->
-		# 		db.dequeue (error, msg) ->
+					assert.equal amount, llen
 
-		# 			assert msg
-		# 			done()
+					async.eachSeries [1..amount], (i, cb) ->
+							rpc.dequeue queue, (err, msg) ->
+								throw err if err
+								llen--
+								cb()
+					, () ->
+						assert.equal llen, 0
+						done()
 
-		# 		db2.enqueue {test: "test123"}, ->
+		describe 'maxlength', ->
+			it 'should not go over max length', (done) ->
+				@timeout 10000
+				rpc.queueMaxLength = 10
 
-		# describe 'maxlength', ->
-		# 	it 'should not go over max length', (done) ->
-		# 		db = new Database
-		# 			queue: 'test'
-		# 			max:   100
+				llen = 0
 
-		# 		db.start (error) ->
+				async.eachSeries [1..1000], (i, cb) ->
+					rpc.enqueue queue, JSON.stringify({ha: "sdfsdsdfsdf", d: "sdfsdfsdfsdfsdf", t: 12321321354}), (error, l) ->
+						throw error if error
+						llen = l
+						cb()
+				, (error) ->
+					throw error if error
 
-		# 			enqueue 100, db, ->
-		# 				db.enqueue {too: 'much'}, (error, len) ->
-		# 					assert 100, len
-		# 					done()
+					setTimeout ->
+						assert.equal llen, 10
+						done()
+					, 2000
+
+
+
