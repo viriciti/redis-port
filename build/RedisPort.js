@@ -135,15 +135,20 @@ RedisPort = (function(superClass) {
 
   RedisPort.prototype.stop = function(cb) {
     log.debug(this.id + ": stopping");
-    return async.each(Object.keys(this.ephemerals), ((function(_this) {
+    return async.each(Object.keys(this.ephemerals || []), ((function(_this) {
       return function(key, cb) {
         clearTimeout(_this.ephemerals[key]);
         return _this.del(key, cb);
       };
     })(this)), (function(_this) {
       return function() {
-        _this.client.end();
-        _this.subscriber.end();
+        var ref, ref1;
+        if ((ref = _this.client) != null) {
+          ref.end();
+        }
+        if ((ref1 = _this.subscriber) != null) {
+          ref1.end();
+        }
         _this.emit("stopped");
         log.debug(_this.id + ": stopped");
         return typeof cb === "function" ? cb() : void 0;
