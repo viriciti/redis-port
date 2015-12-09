@@ -144,12 +144,12 @@ class RedisPort extends EventEmitter
 	stop: (cb) ->
 		log.debug "#{@id}: stopping"
 
-		async.each (Object.keys @ephemerals), ((key, cb) =>
+		async.each (Object.keys @ephemerals or []), ((key, cb) =>
 			clearTimeout @ephemerals[key]
 			@del key, cb
 		), =>
-			@client.end()
-			@subscriber.end()
+			@client?.end()
+			@subscriber?.end()
 
 			@emit "stopped"
 			log.debug "#{@id}: stopped"
