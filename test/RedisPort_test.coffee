@@ -22,6 +22,19 @@ client = null
 
 describe "Unit", ->
 
+	describe "stop when not started", ->
+		it "should stop anyway", (done) ->
+			client = new RedisPort
+				redisHost: "localhost"
+				# redisPort: 6380
+				redisPort: 6380
+				project:   "vems"
+				env:       "production"
+				host:      "localhost"
+
+			client.stop ->
+				done()
+
 	describe "not running", ->
 		it "should wait or retry", (done) ->
 			client = new RedisPort
