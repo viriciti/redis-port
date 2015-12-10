@@ -388,7 +388,7 @@ class RedisPort extends EventEmitter
 			freeFn: freeFn
 
 		if role.length - 1 is role.indexOf "*"
-			@getServices role, (error, services) ->
+			@getServices role, (error, services) =>
 				return log.error "#{@id}: Error get services: #{error.message}" if error
 				regFn service for service in services
 
