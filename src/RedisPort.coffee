@@ -201,7 +201,7 @@ class RedisPort extends EventEmitter
 	#
 	pset: (p, data, cb) ->
 		p = @_cleanPath p
-		@client.set p, JSON.stringify(data), (error, result) ->
+		@client.set p, JSON.stringify(data), (error, result) =>
 			log.debug "#{@id}: set", p, result
 			cb? error
 
