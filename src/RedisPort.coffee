@@ -397,6 +397,28 @@ class RedisPort extends EventEmitter
 				return log.error "#{@id}: Error get: #{error.message}" if error
 				regFn service if service
 
+	# Unwatch a role
+	#
+	# @param [String] Role name
+	#
+	unquery: (role) ->
+		log.debug "#{@id}: unquery", role
+
+		project = undefined
+		env     = undefined
+
+		if _.isObject role
+			project = role.project
+			env     = role.env
+			role    = role.role
+
+		p = @_cleanPath "services/#{role}", project, env
+
+		subscriptionKey = "__keyspace@0__:#{p}"
+		@subscriber.punsubscribe subscriptionKey
+
+		delete @subscriptions[subscriptionKey]
+
 	# Get current known services
 	#
 	# @param [String] Optional wildcard string

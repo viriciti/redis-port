@@ -188,10 +188,12 @@ RedisPort = (function(superClass) {
 
   RedisPort.prototype.pset = function(p, data, cb) {
     p = this._cleanPath(p);
-    return this.client.set(p, JSON.stringify(data), function(error, result) {
-      log.debug(this.id + ": set", p, result);
-      return typeof cb === "function" ? cb(error) : void 0;
-    });
+    return this.client.set(p, JSON.stringify(data), (function(_this) {
+      return function(error, result) {
+        log.debug(_this.id + ": set", p, result);
+        return typeof cb === "function" ? cb(error) : void 0;
+      };
+    })(this));
   };
 
   RedisPort.prototype.mpset = function(arr, cb) {
@@ -387,18 +389,20 @@ RedisPort = (function(superClass) {
       freeFn: freeFn
     };
     if (role.length - 1 === role.indexOf("*")) {
-      return this.getServices(role, function(error, services) {
-        var i, len1, results, service;
-        if (error) {
-          return log.error(this.id + ": Error get services: " + error.message);
-        }
-        results = [];
-        for (i = 0, len1 = services.length; i < len1; i++) {
-          service = services[i];
-          results.push(regFn(service));
-        }
-        return results;
-      });
+      return this.getServices(role, (function(_this) {
+        return function(error, services) {
+          var i, len1, results, service;
+          if (error) {
+            return log.error(_this.id + ": Error get services: " + error.message);
+          }
+          results = [];
+          for (i = 0, len1 = services.length; i < len1; i++) {
+            service = services[i];
+            results.push(regFn(service));
+          }
+          return results;
+        };
+      })(this));
     } else {
       return this.get(p, (function(_this) {
         return function(error, service) {
@@ -411,6 +415,22 @@ RedisPort = (function(superClass) {
         };
       })(this));
     }
+  };
+
+  RedisPort.prototype.unquery = function(role) {
+    var env, p, project, subscriptionKey;
+    log.debug(this.id + ": unquery", role);
+    project = void 0;
+    env = void 0;
+    if (_.isObject(role)) {
+      project = role.project;
+      env = role.env;
+      role = role.role;
+    }
+    p = this._cleanPath("services/" + role, project, env);
+    subscriptionKey = "__keyspace@0__:" + p;
+    this.subscriber.punsubscribe(subscriptionKey);
+    return delete this.subscriptions[subscriptionKey];
   };
 
   RedisPort.prototype.getServices = function(wildcard, cb) {
