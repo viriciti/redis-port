@@ -35,6 +35,12 @@ class RedisPort extends EventEmitter
 	# @property [String] Default path to subscribe network services with
 	servicesPath:     "services"
 
+	# @property [String] Default path to missed keys
+	missedPath:       "missed"
+
+	# @property [String] Default lenth of missed keys list
+	missedLength:     10000
+
 	# @property [Object] Redis client to subscribe with
 	subscriber:       null
 
@@ -90,7 +96,7 @@ class RedisPort extends EventEmitter
 		@ephemerals    = {}
 		@subscriptions = {}
 
-		@subscriber = redis.createClient @redisPort, @redisHost, retry_max_delay: 10000
+		@subscriber = redis.createClient @redisPort, @redisHost
 
 		@subscriber.on "pmessage", (pattern, channel, key) =>
 			log.debug "#{@id}: pmessage", pattern, key
@@ -128,7 +134,7 @@ class RedisPort extends EventEmitter
 			log.warn "Redis client error: #{error.message}"
 			@emit "reconnect"
 
-		@client = redis.createClient @redisPort, @redisHost, retry_max_delay: 10000
+		@client = redis.createClient @redisPort, @redisHost
 
 		@client.once "connect", (error) =>
 			log.debug "#{@id}: Connected."
@@ -148,8 +154,8 @@ class RedisPort extends EventEmitter
 			clearTimeout @ephemerals[key]
 			@del key, cb
 		), =>
-			@client?.end()
-			@subscriber?.end()
+			@client?.end true
+			@subscriber?.end true
 
 			@emit "stopped"
 			log.debug "#{@id}: stopped"
@@ -221,11 +227,41 @@ class RedisPort extends EventEmitter
 	# @param [String] Path
 	# @param [Function] Callback function
 	#
+	logMissed: (p) ->
+		log.debug "#{@id}: logMissed", p
+
+		info =
+			path:      p
+			redisHost: @redisHost
+			redisPort: @redisPort
+			host:      @host
+			env:       @env
+			project:   @project
+			time:      new Date
+
+		missedPathFull = @_cleanPath @missedPath
+
+		@client.lpush [missedPathFull, JSON.stringify info], (error) =>
+			return log.error "Error in lpush: #{error.message}" if error
+
+			@emit "missed", p, info
+
+			@client.ltrim [missedPathFull, 0, @missedLength - 1], (error) =>
+				return log.error "Error in ltrim: #{error.message}" if error
+
+	# Get a value by key
+	#
+	# @param [String] Path
+	# @param [Function] Callback function
+	#
 	get: (p, cb) ->
 		p = @_cleanPath p
 
 		@client.get p, (error, data) =>
 			log.debug "#{@id}: get", p
+
+			@logMissed p unless data
+
 			cb error, JSON.parse data
 
 	# Delete by key
