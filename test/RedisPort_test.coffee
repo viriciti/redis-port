@@ -609,5 +609,55 @@ describe "Unit", ->
 						assert.equal 1001000, JSON.parse(msg).t
 						done()
 
+	describe "missed", ->
+		rpc = null
+
+		before (done) ->
+			newClient "hellep", "hellep", (c) ->
+				rpc = c
+				rpc.missedLength = 10
+				done()
+
+		it "should emit missed on log", (done) ->
+			rpc.once "missed", (p, info) ->
+				done()
+
+			rpc.logMissed "boe!"
+
+		it "should have missed length on log", (done) ->
+			list = rpc._cleanPath "missed"
+
+			rpc.once "missed", (p, info) ->
+				rpc.client.lpop list, (error, info) ->
+					assert.equal (JSON.parse info)?.path, "boe!"
+					done()
+
+			rpc.logMissed "boe!"
+
+
+		it "should have trim on max length", (done) ->
+			list = rpc._cleanPath "missed"
+
+			count = 0
+
+			handleMissed = (p, info) ->
+				return if ++count isnt 20
+
+				rpc.removeListener "missed", handleMissed
+
+				setTimeout ->
+					rpc.client.llen list, (error, l) ->
+						assert.equal l, 10
+
+						rpc.client.lpop list, (error, info) ->
+							assert.equal (JSON.parse info)?.path, rpc._cleanPath "boe!-20"
+
+							done()
+				, 400
+
+			rpc.on "missed", handleMissed
+
+			async.each [0..20], (i, cb) ->
+				rpc.get "boe!-#{i}", cb
 
 
